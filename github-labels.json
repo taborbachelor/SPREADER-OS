@@ -1,0 +1,15 @@
+[
+  { "name": "software",      "color": "0075ca", "description": "Code, UI, parsing logic" },
+  { "name": "hardware",      "color": "e4e669", "description": "Wiring, enclosures, BOM" },
+  { "name": "field-test",    "color": "008672", "description": "Real-world test notes and results" },
+  { "name": "bug",           "color": "d73a4a", "description": "Something is broken" },
+  { "name": "enhancement",   "color": "a2eeef", "description": "New feature or improvement" },
+  { "name": "calibration",   "color": "f9d0c4", "description": "Load cell or GPS calibration" },
+  { "name": "phase-2",       "color": "bfd4f2", "description": "Demo unit build (~$170 BOM)" },
+  { "name": "phase-3",       "color": "d4c5f9", "description": "Electron Windows app" },
+  { "name": "USC",           "color": "ffa500", "description": "Related to the USC LLC pitch" },
+  { "name": "question",      "color": "d876e3", "description": "Need to figure this out" },
+  { "name": "blocked",       "color": "b60205", "description": "Waiting on something external" },
+  { "name": "Caleb",         "color": "c5def5", "description": "Hardware owner — Caleb's domain" },
+  { "name": "Tabor",         "color": "e99695", "description": "Software owner — Tabor's domain" }
+]

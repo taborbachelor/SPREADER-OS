@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Node / Electron
+node_modules/
+dist/
+.env
+*.log
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Calibration (store locally, not in repo — contains site-specific data)
+firmware/calibration.json
+
+# Editor
+.vscode/
+.idea/
+*.swp
