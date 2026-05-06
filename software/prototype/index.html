@@ -1,0 +1,792 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Spreader OS</title>
+  <style>
+    /* ── Design Tokens ────────────────────────────────────────────────── */
+    :root {
+      --bg:             #0F1117;
+      --bg-panel:       #161922;
+      --bg-raised:      #1E2233;
+      --border:         #2A2F45;
+      --text-value:     #FFFFFF;
+      --text-label:     #6B7280;
+      --text-secondary: #9CA3AF;
+      --amber:          #F59E0B;
+      --green:          #22C55E;
+      --red:            #EF4444;
+    }
+
+    /* ── Reset ────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-value);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: grid;
+      grid-template-rows: 44px 1fr 64px;
+      height: 100vh;
+    }
+
+    /* ── Status Bar ───────────────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .status-group { display: flex; align-items: center; gap: 16px; }
+
+    .status-indicator { display: flex; align-items: center; gap: 6px; }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-label);
+      flex-shrink: 0;
+    }
+    .status-dot.live { background: var(--amber); }
+    .status-dot.ok   { background: var(--green); }
+    .status-dot.err  { background: var(--red); }
+
+    .sim-badge {
+      background: var(--amber);
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+
+    #clock {
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Main Layout ──────────────────────────────────────────────────── */
+    #main {
+      display: grid;
+      grid-template-columns: 260px 1fr 290px;
+      gap: 8px;
+      padding: 8px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel-header {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      flex-shrink: 0;
+    }
+
+    .panel-body {
+      padding: 12px;
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Metrics Panel ────────────────────────────────────────────────── */
+    #panel-metrics .panel-body { gap: 0; }
+
+    .metric-block {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6px 4px;
+      border-bottom: 1px solid var(--border);
+      min-height: 0;
+    }
+    .metric-block:last-child { border-bottom: none; }
+
+    .metric-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      margin-bottom: 1px;
+    }
+
+    .metric-value {
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text-value);
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-value.md  { font-size: 40px; }
+    .metric-value.sm  { font-size: 32px; }
+
+    .metric-unit {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-label);
+      margin-left: 4px;
+    }
+
+    .metric-block.is-live .metric-value { color: var(--amber); }
+
+    /* ── Map Panel ────────────────────────────────────────────────────── */
+    #panel-map { }
+
+    #coverage-canvas {
+      display: block;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Job Panel ────────────────────────────────────────────────────── */
+    #panel-job .panel-body { gap: 10px; }
+
+    .job-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      margin-bottom: 2px;
+    }
+
+    .rate-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .rate-actual {
+      font-size: 32px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--green);
+    }
+    .rate-sep { color: var(--text-label); font-size: 20px; }
+    .rate-target-input {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-value);
+      font-size: 22px;
+      font-weight: 600;
+      width: 76px;
+      padding: 3px 6px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: inherit;
+    }
+    .rate-target-input:focus {
+      outline: 2px solid var(--amber);
+      border-color: transparent;
+    }
+    .rate-unit { font-size: 12px; color: var(--text-label); }
+
+    .job-timer {
+      font-size: 36px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 11px;
+      cursor: pointer;
+      width: 100%;
+      text-transform: uppercase;
+      font-family: inherit;
+    }
+    .btn-start { background: var(--green); color: #000; }
+    .btn-stop  { background: var(--red);   color: #fff; }
+    .btn-tare  {
+      background: var(--bg-raised);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      padding: 8px;
+    }
+
+    .panel-divider { height: 1px; background: var(--border); flex-shrink: 0; }
+
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .total-block {
+      background: var(--bg-raised);
+      border-radius: 4px;
+      padding: 7px 9px;
+    }
+    .total-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-label);
+    }
+    .total-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .total-unit { font-size: 11px; color: var(--text-label); margin-left: 2px; }
+
+    /* ── Section Bar ──────────────────────────────────────────────────── */
+    #section-bar {
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .section-bar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      white-space: nowrap;
+    }
+
+    #sections-container {
+      display: flex;
+      flex: 1;
+      gap: 4px;
+    }
+
+    .section-btn {
+      flex: 1;
+      height: 38px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: inherit;
+    }
+    .section-btn.open   { background: var(--green); color: #000; }
+    .section-btn.closed { background: var(--amber); color: #000; }
+    .section-btn.manual { background: var(--red);   color: #fff; }
+
+    .asc-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .asc-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-label);
+    }
+
+    /* Toggle switch */
+    .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .toggle-track::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 2px;
+      top: 2px;
+      background: var(--text-label);
+      border-radius: 50%;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--green); border-color: var(--green); }
+    .toggle input:checked + .toggle-track::before { transform: translateX(16px); background: #000; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Status Bar ────────────────────────────────────────────────── -->
+  <div id="status-bar">
+    <div class="status-group">
+      <div class="status-indicator">
+        <div class="status-dot" id="gps-dot"></div>
+        <span id="gps-status-text" style="color:var(--text-secondary)">GPS · No Fix</span>
+      </div>
+      <div class="status-indicator">
+        <div class="status-dot" id="scale-dot"></div>
+        <span id="scale-status-text" style="color:var(--text-secondary)">Scale · Disconnected</span>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <span class="sim-badge" id="sim-badge" style="display:none">SIMULATION</span>
+    </div>
+
+    <div class="status-group">
+      <span id="clock">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- ── Main Content ──────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Panel 1: Live Metrics -->
+    <div class="panel" id="panel-metrics">
+      <div class="panel-header">Live</div>
+      <div class="panel-body">
+
+        <div class="metric-block" id="metric-weight">
+          <div class="metric-label">Weight</div>
+          <div class="metric-value" id="display-weight">—<span class="metric-unit">lbs</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-rate">
+          <div class="metric-label">Rate</div>
+          <div class="metric-value md" id="display-rate">—<span class="metric-unit">lbs/ac</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-speed">
+          <div class="metric-label">Speed</div>
+          <div class="metric-value sm" id="display-speed">—<span class="metric-unit">mph</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-load">
+          <div class="metric-label">Load Remaining</div>
+          <div class="metric-value sm" id="display-load">—<span class="metric-unit">tons</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Panel 2: Coverage Map -->
+    <div class="panel" id="panel-map">
+      <div class="panel-header">Coverage Map</div>
+      <canvas id="coverage-canvas"></canvas>
+    </div>
+
+    <!-- Panel 3: Job Control -->
+    <div class="panel" id="panel-job">
+      <div class="panel-header">Job</div>
+      <div class="panel-body">
+
+        <div>
+          <div class="job-label">Rate — Actual / Target</div>
+          <div class="rate-row">
+            <span class="rate-actual" id="display-rate-actual">—</span>
+            <span class="rate-sep">/</span>
+            <input class="rate-target-input" id="input-target-rate" type="number" value="500" min="0" max="9999">
+            <span class="rate-unit">lbs/ac</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="job-label">Elapsed</div>
+          <div class="job-timer" id="display-timer">--:--:--</div>
+        </div>
+
+        <button class="btn btn-start" id="btn-job">START JOB</button>
+        <button class="btn btn-tare" id="btn-tare">TARE SCALE</button>
+
+        <div class="panel-divider"></div>
+
+        <div class="totals-grid">
+          <div class="total-block">
+            <div class="total-label">Applied</div>
+            <div class="total-value" id="display-total-lbs">—<span class="total-unit">lbs</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Acres</div>
+            <div class="total-value" id="display-total-acres">—<span class="total-unit">ac</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Avg Rate</div>
+            <div class="total-value" id="display-avg-rate">—<span class="total-unit">lb/ac</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Tons Left</div>
+            <div class="total-value" id="display-tons-left">—</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Section Bar ────────────────────────────────────────────────── -->
+  <div id="section-bar">
+    <span class="section-bar-label">Sections</span>
+    <div id="sections-container"></div>
+    <div class="asc-control">
+      <span class="asc-label">ASC</span>
+      <label class="toggle">
+        <input type="checkbox" id="asc-toggle" checked>
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+  </div>
+
+  <script>
+    // ── Constants ────────────────────────────────────────────────────────
+    const SQ_FT_PER_ACRE            = 43560;  // sq ft per acre
+    const FT_PER_MILE               = 5280;   // ft per mile
+    const SEC_PER_HOUR              = 3600;   // seconds per hour
+    const MPH_TO_FT_PER_SEC         = FT_PER_MILE / SEC_PER_HOUR;  // ~1.4667
+    const KNOTS_TO_MPH              = 1.15078;
+    const KMH_TO_MPH                = 0.621371;
+    const DEFAULT_SPREAD_WIDTH_FT   = 50;
+    const DEFAULT_SECTION_COUNT     = 10;
+    const DEFAULT_SECTION_WIDTH_FT  = 5;
+    const WEIGHT_BUFFER_SIZE        = 5;
+    const DEFAULT_MIN_SPEED_MPH     = 0.3;
+    const DEFAULT_OVERLAP_THRESHOLD = 0.5;   // 50%
+    const GPS_BAUD_RATE             = 19200;
+    const SCALE_BAUD_RATE           = 9600;
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let gpsState = {
+      connected:   false,
+      simulated:   false,
+      lat:         0,
+      lon:         0,
+      speed_mph:   0,
+      heading_deg: 0,
+      fix_quality: 0,
+      satellites:  0,
+      last_update: null,
+    };
+
+    let scaleState = {
+      connected:     false,
+      simulated:     false,
+      weight_lbs:    0,
+      weight_buffer: [],   // rolling 5-sample buffer
+      tare_offset:   0,
+      last_update:   null,
+    };
+
+    let calcState = {
+      delta_weight_per_sec: 0,
+      rate_lbs_per_acre:    0,
+      effective_width_ft:   DEFAULT_SPREAD_WIDTH_FT,
+      active_section_count: DEFAULT_SECTION_COUNT,
+    };
+
+    let jobState = {
+      active:            false,
+      start_time:        null,
+      start_weight:      0,
+      total_applied_lbs: 0,
+      total_acres:       0,
+      gps_track:         [],
+      coverage_cells:    new Set(),
+    };
+
+    let sections = Array.from({ length: DEFAULT_SECTION_COUNT }, (_, i) => ({
+      index:           i,
+      active:          true,
+      manual_override: false,
+      asc_covered:     false,
+    }));
+
+    let settings = {
+      spread_width_ft:          DEFAULT_SPREAD_WIDTH_FT,
+      section_count:            DEFAULT_SECTION_COUNT,
+      section_width_ft:         DEFAULT_SECTION_WIDTH_FT,
+      asc_enabled:              true,
+      asc_overlap_threshold:    DEFAULT_OVERLAP_THRESHOLD,
+      min_operating_speed_mph:  DEFAULT_MIN_SPEED_MPH,
+      target_rate_lbs_per_acre: 500,
+    };
+
+    // ── Section Bar ───────────────────────────────────────────────────────
+    function renderSections() {
+      const container = document.getElementById('sections-container');
+      container.innerHTML = '';
+      sections.forEach((sec, i) => {
+        const btn = document.createElement('button');
+        let cls = 'section-btn ';
+        if (sec.manual_override) {
+          cls += 'manual';
+        } else if (sec.active) {
+          cls += 'open';
+        } else {
+          cls += 'closed';
+        }
+        btn.className = cls;
+        btn.textContent = i + 1;
+        btn.title = `Section ${i + 1} — click to toggle manual override`;
+        btn.addEventListener('click', () => toggleSectionOverride(i));
+        container.appendChild(btn);
+      });
+    }
+
+    function updateSectionState(index, updates) {
+      sections[index] = { ...sections[index], ...updates };
+      renderSections();
+    }
+
+    function toggleSectionOverride(index) {
+      const sec = sections[index];
+      const nowOverridden = !sec.manual_override;
+      updateSectionState(index, {
+        manual_override: nowOverridden,
+        active: nowOverridden ? false : !sec.asc_covered,
+      });
+    }
+
+    // ── Clock ─────────────────────────────────────────────────────────────
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+    }
+
+    // ── Map Canvas ────────────────────────────────────────────────────────
+    function resizeCanvas() {
+      const canvas = document.getElementById('coverage-canvas');
+      const panel  = document.getElementById('panel-map');
+      const header = panel.querySelector('.panel-header');
+      canvas.width  = panel.clientWidth  - 2;
+      canvas.height = panel.clientHeight - header.offsetHeight - 2;
+      drawMapIdle();
+    }
+
+    function drawMapIdle() {
+      const canvas = document.getElementById('coverage-canvas');
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width;
+      const H = canvas.height;
+
+      ctx.fillStyle = '#0A0C12';
+      ctx.fillRect(0, 0, W, H);
+
+      // Grid
+      ctx.strokeStyle = '#1A1E2E';
+      ctx.lineWidth = 1;
+      const step = 40;
+      for (let x = 0; x <= W; x += step) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+      }
+      for (let y = 0; y <= H; y += step) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+      }
+
+      // Idle label
+      ctx.fillStyle = '#2A2F45';
+      ctx.font = '13px Segoe UI, system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Start a job to begin mapping coverage', W / 2, H / 2);
+    }
+
+    // ── Status Bar Updates ────────────────────────────────────────────────
+    function updateStatusBar() {
+      const gpsDot  = document.getElementById('gps-dot');
+      const gpsText = document.getElementById('gps-status-text');
+      const scaleDot  = document.getElementById('scale-dot');
+      const scaleText = document.getElementById('scale-status-text');
+      const simBadge  = document.getElementById('sim-badge');
+
+      const anySimulated = gpsState.simulated || scaleState.simulated;
+      simBadge.style.display = anySimulated ? '' : 'none';
+
+      if (gpsState.connected || gpsState.simulated) {
+        const fixLabels = { 0: 'No Fix', 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'Float' };
+        const fix = fixLabels[gpsState.fix_quality] || 'GPS';
+        gpsDot.className = 'status-dot live';
+        gpsText.textContent = `GPS · ${gpsState.satellites} sats · ${fix}`;
+        gpsText.style.color = 'var(--text-value)';
+      } else {
+        gpsDot.className = 'status-dot err';
+        gpsText.textContent = 'GPS · Disconnected';
+        gpsText.style.color = 'var(--red)';
+      }
+
+      if (scaleState.connected || scaleState.simulated) {
+        scaleDot.className = 'status-dot live';
+        scaleText.textContent = 'Scale · Connected';
+        scaleText.style.color = 'var(--text-value)';
+      } else {
+        scaleDot.className = 'status-dot';
+        scaleText.textContent = 'Scale · Disconnected';
+        scaleText.style.color = 'var(--text-secondary)';
+      }
+    }
+
+    // ── Display Updates ───────────────────────────────────────────────────
+    function updateMetricsDisplay() {
+      const weightBlock = document.getElementById('metric-weight');
+      const rateBlock   = document.getElementById('metric-rate');
+      const speedBlock  = document.getElementById('metric-speed');
+      const loadBlock   = document.getElementById('metric-load');
+
+      const isLive = scaleState.connected || scaleState.simulated;
+      const isGpsLive = gpsState.connected || gpsState.simulated;
+
+      weightBlock.classList.toggle('is-live', isLive);
+      rateBlock.classList.toggle('is-live', isLive && isGpsLive && jobState.active);
+
+      const weight = scaleState.weight_lbs;
+      document.getElementById('display-weight').innerHTML =
+        isLive ? `${weight.toLocaleString('en-US', { maximumFractionDigits: 0 })}<span class="metric-unit">lbs</span>` :
+                 `—<span class="metric-unit">lbs</span>`;
+
+      const rate = calcState.rate_lbs_per_acre;
+      document.getElementById('display-rate').innerHTML =
+        jobState.active ? `${Math.round(rate).toLocaleString()}<span class="metric-unit">lbs/ac</span>` :
+                          `—<span class="metric-unit">lbs/ac</span>`;
+
+      const speed = gpsState.speed_mph;
+      document.getElementById('display-speed').innerHTML =
+        isGpsLive ? `${speed.toFixed(1)}<span class="metric-unit">mph</span>` :
+                    `—<span class="metric-unit">mph</span>`;
+
+      const tonsLeft = weight / 2000;
+      document.getElementById('display-load').innerHTML =
+        isLive ? `${tonsLeft.toFixed(1)}<span class="metric-unit">tons</span>` :
+                 `—<span class="metric-unit">tons</span>`;
+    }
+
+    function updateJobDisplay() {
+      const rate = calcState.rate_lbs_per_acre;
+      document.getElementById('display-rate-actual').textContent =
+        jobState.active ? Math.round(rate).toLocaleString() : '—';
+
+      const lbs   = jobState.total_applied_lbs;
+      const acres = jobState.total_acres;
+      const avg   = acres > 0 ? lbs / acres : 0;
+
+      document.getElementById('display-total-lbs').innerHTML =
+        `${Math.round(lbs).toLocaleString()}<span class="total-unit">lbs</span>`;
+      document.getElementById('display-total-acres').innerHTML =
+        `${acres.toFixed(1)}<span class="total-unit">ac</span>`;
+      document.getElementById('display-avg-rate').innerHTML =
+        `${avg > 0 ? Math.round(avg).toLocaleString() : '—'}<span class="total-unit">lb/ac</span>`;
+
+      const tonsLeft = scaleState.weight_lbs / 2000;
+      document.getElementById('display-tons-left').textContent =
+        (scaleState.connected || scaleState.simulated) ? tonsLeft.toFixed(1) : '—';
+    }
+
+    function updateJobTimer() {
+      if (!jobState.active || !jobState.start_time) {
+        document.getElementById('display-timer').textContent = '--:--:--';
+        return;
+      }
+      const elapsed = Math.floor((Date.now() - jobState.start_time) / 1000);
+      const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('display-timer').textContent = `${h}:${m}:${s}`;
+    }
+
+    // ── Job Button ────────────────────────────────────────────────────────
+    document.getElementById('btn-job').addEventListener('click', () => {
+      if (jobState.active) {
+        stopJob();
+      } else {
+        startJob();
+      }
+    });
+
+    function startJob() {
+      jobState.active            = true;
+      jobState.start_time        = Date.now();
+      jobState.start_weight      = scaleState.weight_lbs;
+      jobState.total_applied_lbs = 0;
+      jobState.total_acres       = 0;
+      jobState.gps_track         = [];
+      jobState.coverage_cells    = new Set();
+
+      const btn = document.getElementById('btn-job');
+      btn.textContent = 'STOP JOB';
+      btn.className = 'btn btn-stop';
+    }
+
+    function stopJob() {
+      jobState.active = false;
+
+      const btn = document.getElementById('btn-job');
+      btn.textContent = 'START JOB';
+      btn.className = 'btn btn-start';
+    }
+
+    // ── Tare ──────────────────────────────────────────────────────────────
+    document.getElementById('btn-tare').addEventListener('click', () => {
+      scaleState.tare_offset = scaleState.weight_lbs + scaleState.tare_offset;
+    });
+
+    // ── ASC Toggle ────────────────────────────────────────────────────────
+    document.getElementById('asc-toggle').addEventListener('change', (e) => {
+      settings.asc_enabled = e.target.checked;
+    });
+
+    // ── Target Rate Input ─────────────────────────────────────────────────
+    document.getElementById('input-target-rate').addEventListener('change', (e) => {
+      const val = parseFloat(e.target.value);
+      if (!isNaN(val) && val >= 0) {
+        settings.target_rate_lbs_per_acre = val;
+      }
+    });
+
+    // ── Canvas Resize Observer ────────────────────────────────────────────
+    const mapResizeObserver = new ResizeObserver(() => resizeCanvas());
+    mapResizeObserver.observe(document.getElementById('panel-map'));
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    renderSections();
+    updateClock();
+    updateStatusBar();
+    updateMetricsDisplay();
+    updateJobDisplay();
+    setInterval(updateClock, 1000);
+    setInterval(updateJobTimer, 1000);
+    requestAnimationFrame(resizeCanvas);
+  </script>
+</body>
+</html>
