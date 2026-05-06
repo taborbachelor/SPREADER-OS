@@ -83,7 +83,7 @@ sudo apt install python3-pip git chromium-browser -y
 pip3 install hx711 pyserial RPi.GPIO
 
 # Clone the repo
-git clone https://github.com/[yourhandle]/spreader-project.git
+git clone https://github.com/taborbachelor/spreader-project.git
 
 # Auto-launch UI on boot (kiosk mode)
 # Add to /etc/rc.local before exit 0:
