@@ -29,7 +29,7 @@
       color: var(--text-value);
       font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
       display: grid;
-      grid-template-rows: 44px 1fr 64px;
+      grid-template-rows: 44px 1fr 72px;
       height: 100vh;
     }
 
@@ -293,7 +293,7 @@
 
     .section-btn {
       flex: 1;
-      height: 38px;
+      height: 44px;
       border: none;
       border-radius: 4px;
       cursor: pointer;
@@ -706,6 +706,7 @@
     let scaleState = {
       connected:     false,
       simulated:     false,
+      piBridge:      false,
       weight_lbs:    0,
       weight_buffer: [],   // rolling 5-sample buffer
       tare_offset:   0,
@@ -1015,6 +1016,66 @@
       }
     }
 
+    // ── WebSocket Scale — Raspberry Pi HX711 Bridge ───────────────────────
+
+    const SCALE_WS_URL  = 'ws://localhost:8765';
+    const SCALE_WS_RETRY_MS = 3000;
+    let scaleWs         = null;
+    let _wsRetryTimer   = null;
+
+    function connectScaleWs() {
+      if (scaleWs && (scaleWs.readyState === WebSocket.OPEN || scaleWs.readyState === WebSocket.CONNECTING)) return;
+      try {
+        scaleWs = new WebSocket(SCALE_WS_URL);
+      } catch {
+        _scheduleWsRetry();
+        return;
+      }
+
+      scaleWs.onopen = () => {
+        clearTimeout(_wsRetryTimer);
+        scaleState.connected = true;
+        scaleState.piBridge  = true;
+        scaleState.simulated = false;
+        updateStatusBar();
+        console.debug('[WS] Pi Bridge connected');
+      };
+
+      scaleWs.onmessage = (ev) => {
+        try {
+          const msg = JSON.parse(ev.data);
+          if (typeof msg.weight_lbs === 'number') {
+            pushWeightSample(msg.weight_lbs);
+            updateDeltaWeight();
+            scaleState.last_update = Date.now();
+            recalculate();
+          }
+        } catch { /* ignore malformed frames */ }
+      };
+
+      scaleWs.onclose = scaleWs.onerror = () => {
+        if (!scaleState.piBridge) return;  // already cleaned up
+        scaleState.connected = false;
+        scaleState.piBridge  = false;
+        scaleState.simulated = true;   // fall back to simulation
+        scaleWs = null;
+        updateStatusBar();
+        console.debug('[WS] Pi Bridge disconnected — retrying in', SCALE_WS_RETRY_MS, 'ms');
+        _scheduleWsRetry();
+      };
+    }
+
+    function _scheduleWsRetry() {
+      clearTimeout(_wsRetryTimer);
+      _wsRetryTimer = setTimeout(connectScaleWs, SCALE_WS_RETRY_MS);
+    }
+
+    function sendTareWs() {
+      if (scaleWs && scaleWs.readyState === WebSocket.OPEN) {
+        scaleWs.send(JSON.stringify({ cmd: 'tare' }));
+      }
+    }
+
     // ── ASC Engine ────────────────────────────────────────────────────────
 
     const COVERAGE_CELL_FT = 5;  // one cell per section-width
@@ -1293,24 +1354,22 @@
       const noise      = (Math.random() - 0.5) * (SIM_WEIGHT_NOISE_LBS * 2);
       simState.raw_weight = Math.max(0, simState.raw_weight - lbsPerSec + noise);
 
-      // Push through smoothing buffer and update delta
-      pushWeightSample(simState.raw_weight);
-      updateDeltaWeight();
-      scaleState.last_update = Date.now();
+      // Push through smoothing buffer and update delta (skip if Pi Bridge has the scale)
+      if (!scaleState.piBridge) {
+        pushWeightSample(simState.raw_weight);
+        updateDeltaWeight();
+        scaleState.last_update = Date.now();
+      }
 
       recalculate();
     }
 
-    // Auto-start simulation when Web Serial is unavailable.
-    // When real ports are connected (Step 6), simulation stops for that input.
+    // Auto-start simulation; attempt Pi Bridge WebSocket immediately.
+    // Serial GPS / serial scale remain available via the CONNECT buttons.
     function initHardwareOrSim() {
-      if (!navigator.serial) {
-        console.debug('[SIM] Web Serial API not available — simulation mode');
-        startSimulation();
-        return;
-      }
-      // Web Serial is available: start simulation as default until ports are connected
       startSimulation();
+      // Try Pi Bridge — silently falls back to simulation on close/error.
+      connectScaleWs();
     }
 
     // ── Section Bar ───────────────────────────────────────────────────────
@@ -1545,7 +1604,9 @@
 
       if (scaleState.connected || scaleState.simulated) {
         scaleDot.className = 'status-dot live';
-        scaleText.textContent = scaleState.simulated ? 'Scale · SIM' : 'Scale · Connected';
+        scaleText.textContent = scaleState.simulated
+          ? 'Scale · SIM'
+          : scaleState.piBridge ? 'Scale · Pi Bridge' : 'Scale · Connected';
         scaleText.style.color = 'var(--text-value)';
         btnScale.style.display = 'none';
       } else {
@@ -1689,7 +1750,11 @@
 
     // ── Tare ──────────────────────────────────────────────────────────────
     document.getElementById('btn-tare').addEventListener('click', () => {
-      scaleState.tare_offset = scaleState.weight_lbs + scaleState.tare_offset;
+      if (scaleState.piBridge) {
+        sendTareWs();  // Pi firmware handles tare and updates calibration.json
+      } else {
+        scaleState.tare_offset = scaleState.weight_lbs + scaleState.tare_offset;
+      }
     });
 
     // ── ASC Toggle ────────────────────────────────────────────────────────
