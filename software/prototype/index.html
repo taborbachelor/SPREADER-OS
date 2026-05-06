@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Spreader OS</title>
+  <style>
+    /* ── Design Tokens ────────────────────────────────────────────────── */
+    :root {
+      --bg:             #0F1117;
+      --bg-panel:       #161922;
+      --bg-raised:      #1E2233;
+      --border:         #2A2F45;
+      --text-value:     #FFFFFF;
+      --text-label:     #6B7280;
+      --text-secondary: #9CA3AF;
+      --amber:          #F59E0B;
+      --green:          #22C55E;
+      --red:            #EF4444;
+    }
+
+    /* ── Reset ────────────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body { height: 100%; overflow: hidden; }
+
+    body {
+      background: var(--bg);
+      color: var(--text-value);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      display: grid;
+      grid-template-rows: 44px 1fr 64px;
+      height: 100vh;
+    }
+
+    /* ── Status Bar ───────────────────────────────────────────────────── */
+    #status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      background: var(--bg-panel);
+      border-bottom: 1px solid var(--border);
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .status-group { display: flex; align-items: center; gap: 16px; }
+
+    .status-indicator { display: flex; align-items: center; gap: 6px; }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--text-label);
+      flex-shrink: 0;
+    }
+    .status-dot.live { background: var(--amber); }
+    .status-dot.ok   { background: var(--green); }
+    .status-dot.err  { background: var(--red); }
+
+    .sim-badge {
+      background: var(--amber);
+      color: #000;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 2px 8px;
+      border-radius: 3px;
+    }
+
+    #clock {
+      color: var(--text-secondary);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ── Main Layout ──────────────────────────────────────────────────── */
+    #main {
+      display: grid;
+      grid-template-columns: 260px 1fr 290px;
+      gap: 8px;
+      padding: 8px;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .panel {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .panel-header {
+      padding: 7px 12px;
+      border-bottom: 1px solid var(--border);
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      flex-shrink: 0;
+    }
+
+    .panel-body {
+      padding: 12px;
+      flex: 1;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Metrics Panel ────────────────────────────────────────────────── */
+    #panel-metrics .panel-body { gap: 0; }
+
+    .metric-block {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 6px 4px;
+      border-bottom: 1px solid var(--border);
+      min-height: 0;
+    }
+    .metric-block:last-child { border-bottom: none; }
+
+    .metric-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      margin-bottom: 1px;
+    }
+
+    .metric-value {
+      font-size: 52px;
+      font-weight: 700;
+      line-height: 1;
+      color: var(--text-value);
+      font-variant-numeric: tabular-nums;
+    }
+    .metric-value.md  { font-size: 40px; }
+    .metric-value.sm  { font-size: 32px; }
+
+    .metric-unit {
+      font-size: 14px;
+      font-weight: 400;
+      color: var(--text-label);
+      margin-left: 4px;
+    }
+
+    .metric-block.is-live .metric-value { color: var(--amber); }
+
+    /* ── Map Panel ────────────────────────────────────────────────────── */
+    #panel-map { }
+
+    #coverage-canvas {
+      display: block;
+      width: 100%;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Job Panel ────────────────────────────────────────────────────── */
+    #panel-job .panel-body { gap: 10px; }
+
+    .job-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      margin-bottom: 2px;
+    }
+
+    .rate-row {
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+    .rate-actual {
+      font-size: 32px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      color: var(--green);
+    }
+    .rate-sep { color: var(--text-label); font-size: 20px; }
+    .rate-target-input {
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      color: var(--text-value);
+      font-size: 22px;
+      font-weight: 600;
+      width: 76px;
+      padding: 3px 6px;
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      font-family: inherit;
+    }
+    .rate-target-input:focus {
+      outline: 2px solid var(--amber);
+      border-color: transparent;
+    }
+    .rate-unit { font-size: 12px; color: var(--text-label); }
+
+    .job-timer {
+      font-size: 36px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.04em;
+    }
+
+    .btn {
+      border: none;
+      border-radius: 6px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      padding: 11px;
+      cursor: pointer;
+      width: 100%;
+      text-transform: uppercase;
+      font-family: inherit;
+    }
+    .btn-start { background: var(--green); color: #000; }
+    .btn-stop  { background: var(--red);   color: #fff; }
+    .btn-tare  {
+      background: var(--bg-raised);
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+      font-size: 12px;
+      padding: 8px;
+    }
+
+    .panel-divider { height: 1px; background: var(--border); flex-shrink: 0; }
+
+    .totals-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6px;
+    }
+
+    .total-block {
+      background: var(--bg-raised);
+      border-radius: 4px;
+      padding: 7px 9px;
+    }
+    .total-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-label);
+    }
+    .total-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+    .total-unit { font-size: 11px; color: var(--text-label); margin-left: 2px; }
+
+    /* ── Section Bar ──────────────────────────────────────────────────── */
+    #section-bar {
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 12px;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .section-bar-label {
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--text-label);
+      white-space: nowrap;
+    }
+
+    #sections-container {
+      display: flex;
+      flex: 1;
+      gap: 4px;
+    }
+
+    .section-btn {
+      flex: 1;
+      height: 38px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: inherit;
+    }
+    .section-btn.open   { background: var(--green); color: #000; }
+    .section-btn.closed { background: var(--amber); color: #000; }
+    .section-btn.manual { background: var(--red);   color: #fff; }
+
+    .asc-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: 4px;
+      white-space: nowrap;
+    }
+    .asc-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-label);
+    }
+
+    /* Toggle switch */
+    .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-track {
+      position: absolute;
+      inset: 0;
+      background: var(--bg-raised);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .toggle-track::before {
+      content: '';
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      left: 2px;
+      top: 2px;
+      background: var(--text-label);
+      border-radius: 50%;
+      transition: transform 0.15s, background 0.15s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--green); border-color: var(--green); }
+    .toggle input:checked + .toggle-track::before { transform: translateX(16px); background: #000; }
+
+    /* ── Icon Buttons ────────────────────────────────────────────────── */
+    .icon-btn {
+      background: none;
+      border: none;
+      color: var(--text-label);
+      font-size: 15px;
+      cursor: pointer;
+      padding: 4px 7px;
+      border-radius: 3px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .icon-btn:hover { background: var(--bg-raised); color: var(--text-value); }
+
+    /* ── Overlay ─────────────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+
+    /* ── Modal ───────────────────────────────────────────────────────── */
+    .modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      width: 360px;
+      max-width: 92vw;
+    }
+    .modal-title {
+      font-size: 16px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-label); margin-bottom: 16px;
+    }
+    .modal-stat {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .modal-stat-label { font-size: 11px; color: var(--text-label); text-transform: uppercase; letter-spacing: 0.08em; }
+    .modal-stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .modal-field { margin-top: 16px; }
+    .modal-field label { font-size: 11px; color: var(--text-label); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 6px; }
+    .modal-field input {
+      width: 100%;
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-value); font-size: 16px; padding: 8px 10px; font-family: inherit;
+    }
+    .modal-field input:focus { outline: 2px solid var(--amber); border-color: transparent; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .modal-actions .btn { flex: 1; }
+
+    /* ── Side Panel ──────────────────────────────────────────────────── */
+    .side-panel {
+      position: fixed; top: 0; right: 0;
+      width: 300px; height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      z-index: 50;
+      display: flex; flex-direction: column;
+      box-shadow: -6px 0 24px rgba(0,0,0,0.5);
+    }
+    .side-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; height: 44px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .side-panel-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+    .btn-close { background: none; border: none; color: var(--text-label); font-size: 18px; cursor: pointer; padding: 4px; border-radius: 3px; line-height: 1; }
+    .btn-close:hover { color: var(--text-value); }
+
+    /* ── Settings Rows ───────────────────────────────────────────────── */
+    .setting-group { display: flex; flex-direction: column; gap: 10px; }
+    .setting-group-title { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-label); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .setting-label { font-size: 13px; color: var(--text-secondary); }
+    .setting-input {
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-value); font-size: 14px; font-weight: 600;
+      font-family: inherit; padding: 4px 8px; text-align: right; width: 80px;
+    }
+    .setting-input:focus { outline: 2px solid var(--amber); border-color: transparent; }
+
+    /* ── History List ────────────────────────────────────────────────── */
+    .history-item { background: var(--bg-raised); border-radius: 4px; padding: 10px 12px; border: 1px solid transparent; }
+    .history-item:hover { border-color: var(--border); }
+    .history-date { font-size: 11px; color: var(--text-label); margin-bottom: 2px; }
+    .history-field { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .history-stats { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .history-empty { color: var(--text-label); font-size: 13px; text-align: center; padding: 32px 0; }
+
+    /* ── Rate Color States ────────────────────────────────────────────── */
+    .metric-block.rate-spreading .metric-value { color: var(--amber); }
+    .metric-block.rate-on-target .metric-value { color: var(--green); }
+    .metric-block.rate-over      .metric-value { color: var(--red);   }
+    .metric-block.rate-under     .metric-value { color: var(--amber); }
+
+    /* ── On-Target Indicator ─────────────────────────────────────────── */
+    .rate-status {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-top: 2px;
+    }
+    .rate-status.ok    { color: var(--green); }
+    .rate-status.over  { color: var(--red);   }
+    .rate-status.under { color: var(--amber); }
+    .rate-status.idle  { color: var(--text-label); }
+
+    /* ── Connect Buttons ─────────────────────────────────────────────── */
+    .connect-btn {
+      background: none;
+      border: 1px solid var(--amber);
+      color: var(--amber);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-left: 4px;
+    }
+    .connect-btn:hover { background: var(--amber); color: #000; }
+  </style>
+</head>
+<body>
+
+  <!-- ── Status Bar ────────────────────────────────────────────────── -->
+  <div id="status-bar">
+    <div class="status-group">
+      <div class="status-indicator">
+        <div class="status-dot" id="gps-dot"></div>
+        <span id="gps-status-text" style="color:var(--text-secondary)">GPS · No Fix</span>
+        <button class="connect-btn" id="btn-connect-gps" onclick="connectGPS()">CONNECT</button>
+      </div>
+      <div class="status-indicator">
+        <div class="status-dot" id="scale-dot"></div>
+        <span id="scale-status-text" style="color:var(--text-secondary)">Scale · Disconnected</span>
+        <button class="connect-btn" id="btn-connect-scale" onclick="connectScale()">CONNECT</button>
+      </div>
+    </div>
+
+    <div class="status-group">
+      <span class="sim-badge" id="sim-badge" style="display:none">SIMULATION</span>
+    </div>
+
+    <div class="status-group">
+      <button class="icon-btn" onclick="openHistory()" title="Job History">☰</button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙</button>
+      <span id="clock">--:--:--</span>
+    </div>
+  </div>
+
+  <!-- ── Main Content ──────────────────────────────────────────────── -->
+  <div id="main">
+
+    <!-- Panel 1: Live Metrics -->
+    <div class="panel" id="panel-metrics">
+      <div class="panel-header">Live</div>
+      <div class="panel-body">
+
+        <div class="metric-block" id="metric-weight">
+          <div class="metric-label">Weight</div>
+          <div class="metric-value" id="display-weight">—<span class="metric-unit">lbs</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-rate">
+          <div class="metric-label">Rate</div>
+          <div class="metric-value md" id="display-rate">—<span class="metric-unit">lbs/ac</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-speed">
+          <div class="metric-label">Speed</div>
+          <div class="metric-value sm" id="display-speed">—<span class="metric-unit">mph</span></div>
+        </div>
+
+        <div class="metric-block" id="metric-load">
+          <div class="metric-label">Load Remaining</div>
+          <div class="metric-value sm" id="display-load">—<span class="metric-unit">tons</span></div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Panel 2: Coverage Map -->
+    <div class="panel" id="panel-map">
+      <div class="panel-header">Coverage Map</div>
+      <canvas id="coverage-canvas"></canvas>
+    </div>
+
+    <!-- Panel 3: Job Control -->
+    <div class="panel" id="panel-job">
+      <div class="panel-header">Job</div>
+      <div class="panel-body">
+
+        <div>
+          <div class="job-label">Rate — Actual / Target</div>
+          <div class="rate-row">
+            <span class="rate-actual" id="display-rate-actual">—</span>
+            <span class="rate-sep">/</span>
+            <input class="rate-target-input" id="input-target-rate" type="number" value="500" min="0" max="9999">
+            <span class="rate-unit">lbs/ac</span>
+          </div>
+          <div class="rate-status idle" id="rate-status-label">—</div>
+        </div>
+
+        <div>
+          <div class="job-label">Elapsed</div>
+          <div class="job-timer" id="display-timer">--:--:--</div>
+        </div>
+
+        <button class="btn btn-start" id="btn-job">START JOB</button>
+        <button class="btn btn-tare" id="btn-tare">TARE SCALE</button>
+
+        <div class="panel-divider"></div>
+
+        <div class="totals-grid">
+          <div class="total-block">
+            <div class="total-label">Applied</div>
+            <div class="total-value" id="display-total-lbs">—<span class="total-unit">lbs</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Acres</div>
+            <div class="total-value" id="display-total-acres">—<span class="total-unit">ac</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Avg Rate</div>
+            <div class="total-value" id="display-avg-rate">—<span class="total-unit">lb/ac</span></div>
+          </div>
+          <div class="total-block">
+            <div class="total-label">Tons Left</div>
+            <div class="total-value" id="display-tons-left">—</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ── Section Bar ────────────────────────────────────────────────── -->
+  <div id="section-bar">
+    <span class="section-bar-label">Sections</span>
+    <div id="sections-container"></div>
+    <div class="asc-control">
+      <span class="asc-label">ASC</span>
+      <label class="toggle">
+        <input type="checkbox" id="asc-toggle" checked>
+        <div class="toggle-track"></div>
+      </label>
+    </div>
+  </div>
+
+  <!-- ── Job Summary Modal ──────────────────────────────────────────── -->
+  <div id="job-summary-overlay" class="overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Job Complete</div>
+      <div class="modal-stat"><span class="modal-stat-label">Applied</span><span class="modal-stat-value" id="summary-lbs">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Tons</span><span class="modal-stat-value" id="summary-tons">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Acres</span><span class="modal-stat-value" id="summary-acres">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Avg Rate</span><span class="modal-stat-value" id="summary-rate">—</span></div>
+      <div class="modal-stat" style="border:none"><span class="modal-stat-label">Duration</span><span class="modal-stat-value" id="summary-time">—</span></div>
+      <div class="modal-field">
+        <label>Field Name</label>
+        <input id="summary-field-name" type="text" placeholder="e.g. North Field" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-start" onclick="saveAndCloseJob()">SAVE JOB</button>
+        <button class="btn btn-tare" onclick="discardJob()">DISCARD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings Panel ─────────────────────────────────────────────── -->
+  <div id="settings-panel" class="side-panel" style="display:none">
+    <div class="side-panel-header">
+      <span>Settings</span>
+      <button class="btn-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <div class="setting-group">
+        <div class="setting-group-title">Application</div>
+        <div class="setting-row"><span class="setting-label">Target Rate (lbs/ac)</span><input class="setting-input" id="set-target-rate" type="number" min="0" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Spreader Geometry</div>
+        <div class="setting-row"><span class="setting-label">Total Width (ft)</span><input class="setting-input" id="set-spread-width" type="number" min="1" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Section Count</span><input class="setting-input" id="set-section-count" type="number" min="1" max="20" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Section Width (ft)</span><input class="setting-input" id="set-section-width" type="number" min="1" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Auto Section Control</div>
+        <div class="setting-row"><span class="setting-label">Overlap Threshold (%)</span><input class="setting-input" id="set-overlap" type="number" min="0" max="100" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Min Speed (mph)</span><input class="setting-input" id="set-min-speed" type="number" min="0" step="0.1" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Hardware</div>
+        <div class="setting-row"><span class="setting-label">GPS Baud</span><span style="font-size:14px;color:var(--text-secondary)">19,200</span></div>
+        <div class="setting-row"><span class="setting-label">Scale Baud</span><span style="font-size:14px;color:var(--text-secondary)">9,600</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Job History Panel ──────────────────────────────────────────── -->
+  <div id="history-panel" class="side-panel" style="display:none">
+    <div class="side-panel-header">
+      <span>Job History</span>
+      <button class="btn-close" onclick="closeHistory()">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <div id="history-list"></div>
+      <button class="btn btn-tare" onclick="exportAllJobs()">EXPORT ALL (JSON)</button>
+    </div>
+  </div>
+
+  <script>
+    // ── Constants ────────────────────────────────────────────────────────
+    const SQ_FT_PER_ACRE            = 43560;  // sq ft per acre
+    const FT_PER_MILE               = 5280;   // ft per mile
+    const SEC_PER_HOUR              = 3600;   // seconds per hour
+    const MPH_TO_FT_PER_SEC         = FT_PER_MILE / SEC_PER_HOUR;  // ~1.4667
+    const KNOTS_TO_MPH              = 1.15078;
+    const KMH_TO_MPH                = 0.621371;
+    const DEFAULT_SPREAD_WIDTH_FT   = 50;
+    const DEFAULT_SECTION_COUNT     = 10;
+    const DEFAULT_SECTION_WIDTH_FT  = 5;
+    const WEIGHT_BUFFER_SIZE        = 5;
+    const DEFAULT_MIN_SPEED_MPH     = 0.3;
+    const DEFAULT_OVERLAP_THRESHOLD = 0.5;   // 50%
+    const GPS_BAUD_RATE             = 19200;
+    const SCALE_BAUD_RATE           = 9600;
+
+    // Simulation
+    const SIM_START_LAT        = 41.8500;   // central Nebraska farm country
+    const SIM_START_LON        = -98.3500;
+    const SIM_INITIAL_WEIGHT   = 20000;     // lbs — full spreader load
+    const SIM_SPEED_MPH        = 5.0;       // target field speed
+    const SIM_PASS_LENGTH_FT   = 660;       // 1/8 mile per pass
+    const SIM_TICK_MS          = 1000;      // simulation fires at 1 Hz
+    const SIM_WEIGHT_NOISE_LBS = 10;        // ±10 lb noise on raw reading
+
+    // ── State ─────────────────────────────────────────────────────────────
+    let gpsState = {
+      connected:   false,
+      simulated:   false,
+      lat:         0,
+      lon:         0,
+      speed_mph:   0,
+      heading_deg: 0,
+      fix_quality: 0,
+      satellites:  0,
+      last_update: null,
+    };
+
+    let scaleState = {
+      connected:     false,
+      simulated:     false,
+      weight_lbs:    0,
+      weight_buffer: [],   // rolling 5-sample buffer
+      tare_offset:   0,
+      last_update:   null,
+    };
+
+    let calcState = {
+      delta_weight_per_sec: 0,
+      rate_lbs_per_acre:    0,
+      effective_width_ft:   DEFAULT_SPREAD_WIDTH_FT,
+      active_section_count: DEFAULT_SECTION_COUNT,
+    };
+
+    let jobState = {
+      active:            false,
+      start_time:        null,
+      start_weight:      0,
+      total_applied_lbs: 0,
+      total_acres:       0,
+      gps_track:         [],
+      coverage_cells:    new Set(),
+    };
+
+    let sections = Array.from({ length: DEFAULT_SECTION_COUNT }, (_, i) => ({
+      index:           i,
+      active:          true,
+      manual_override: false,
+      asc_covered:     false,
+    }));
+
+    // Coverage map points recorded while job is active.
+    // Each entry: { lat, lon, heading, width_ft }
+    let mapPoints = [];
+
+    let settings = {
+      spread_width_ft:          DEFAULT_SPREAD_WIDTH_FT,
+      section_count:            DEFAULT_SECTION_COUNT,
+      section_width_ft:         DEFAULT_SECTION_WIDTH_FT,
+      asc_enabled:              true,
+      asc_overlap_threshold:    DEFAULT_OVERLAP_THRESHOLD,
+      min_operating_speed_mph:  DEFAULT_MIN_SPEED_MPH,
+      target_rate_lbs_per_acre: 500,
+    };
+
+    // ── Weight Processing ─────────────────────────────────────────────────
+
+    // Push one raw reading through the 5-sample rolling buffer.
+    // Returns the new smoothed weight (net of tare).
+    function pushWeightSample(rawLbs) {
+      const net = rawLbs - scaleState.tare_offset;
+      scaleState.weight_buffer.push(net);
+      if (scaleState.weight_buffer.length > WEIGHT_BUFFER_SIZE) {
+        scaleState.weight_buffer.shift();
+      }
+      const sum = scaleState.weight_buffer.reduce((a, b) => a + b, 0);
+      scaleState.weight_lbs = sum / scaleState.weight_buffer.length;
+      return scaleState.weight_lbs;
+    }
+
+    // Tracks smoothed weight one second ago to calculate delta.
+    let _prevSmoothed = null;
+    let _prevSmoothedTime = null;
+
+    function updateDeltaWeight() {
+      const now = Date.now();
+      if (_prevSmoothed !== null && _prevSmoothedTime !== null) {
+        const dt = (now - _prevSmoothedTime) / 1000;
+        if (dt > 0 && dt <= 5) {
+          const delta = (_prevSmoothed - scaleState.weight_lbs) / dt;
+          calcState.delta_weight_per_sec = Math.max(0, delta);  // negative = loading, ignore
+        }
+      }
+      _prevSmoothed = scaleState.weight_lbs;
+      _prevSmoothedTime = now;
+    }
+
+    // ── Rate Calculation ──────────────────────────────────────────────────
+
+    function calculateRate() {
+      if (gpsState.speed_mph < settings.min_operating_speed_mph) return 0;  // stopped
+      if (calcState.delta_weight_per_sec <= 0) return 0;                    // not spreading
+      if (calcState.active_section_count === 0) return 0;                   // all sections closed
+      return (calcState.delta_weight_per_sec * SQ_FT_PER_ACRE) /
+             (gpsState.speed_mph * MPH_TO_FT_PER_SEC * calcState.effective_width_ft);
+    }
+
+    // Recalculate all derived values and refresh every display.
+    function recalculate() {
+      calcState.active_section_count = sections.filter(s => s.active).length;
+      calcState.effective_width_ft   = calcState.active_section_count * settings.section_width_ft;
+      calcState.rate_lbs_per_acre    = calculateRate();
+
+      // ASC: check before marking so current pass never self-closes
+      runASCCheck();
+
+      if (jobState.active && gpsState.speed_mph >= settings.min_operating_speed_mph) {
+        // Weight applied = starting weight minus current weight
+        jobState.total_applied_lbs = Math.max(0, jobState.start_weight - scaleState.weight_lbs);
+        // Acres covered this second = (speed × width) / sq_ft_per_acre
+        jobState.total_acres +=
+          (gpsState.speed_mph * MPH_TO_FT_PER_SEC * calcState.effective_width_ft) / SQ_FT_PER_ACRE;
+        // Record GPS track + map point
+        jobState.gps_track.push({ lat: gpsState.lat, lon: gpsState.lon, ts: Date.now() });
+        mapPoints.push({
+          lat:      gpsState.lat,
+          lon:      gpsState.lon,
+          heading:  gpsState.heading_deg,
+          width_ft: calcState.effective_width_ft,
+        });
+        // Mark coverage after recording so second pass detects overlap
+        markSwathCoverage();
+      }
+
+      updateStatusBar();
+      updateMetricsDisplay();
+      updateJobDisplay();
+      drawCoverageMap();
+    }
+
+    // ── NMEA Parser ───────────────────────────────────────────────────────
+
+    // Convert ddmm.mmmm + hemisphere to decimal degrees.
+    function nmeaToDeg(raw, hemi) {
+      const v = parseFloat(raw);
+      if (isNaN(v)) return null;
+      const deg = Math.floor(v / 100);
+      const min = v - deg * 100;
+      const dd  = deg + min / 60;
+      return (hemi === 'S' || hemi === 'W') ? -dd : dd;
+    }
+
+    // XOR checksum check — returns true if valid or no checksum present.
+    function checksumOk(sentence) {
+      const star = sentence.indexOf('*');
+      if (star === -1) return true;
+      const body = sentence.slice(1, star);
+      const expected = sentence.slice(star + 1, star + 3).toUpperCase();
+      const calc = body.split('').reduce((a, c) => a ^ c.charCodeAt(0), 0);
+      return calc.toString(16).toUpperCase().padStart(2, '0') === expected;
+    }
+
+    function parseGPRMC(f) {
+      // $GPRMC,time,status,lat,N/S,lon,E/W,knots,course,date,...
+      if (f[2] !== 'A') return null;  // void/invalid fix
+      const lat = nmeaToDeg(f[3], f[4]);
+      const lon = nmeaToDeg(f[5], f[6]);
+      const spd = parseFloat(f[7]);
+      const crs = parseFloat(f[8]);
+      if (lat === null || lon === null || isNaN(spd)) return null;
+      return { lat, lon, speed_mph: spd * KNOTS_TO_MPH, heading_deg: isNaN(crs) ? gpsState.heading_deg : crs };
+    }
+
+    function parseGPGGA(f) {
+      // $GPGGA,time,lat,N/S,lon,E/W,fix,sats,...
+      const fix  = parseInt(f[6]);
+      const sats = parseInt(f[7]);
+      const lat  = nmeaToDeg(f[2], f[3]);
+      const lon  = nmeaToDeg(f[4], f[5]);
+      if (isNaN(fix)) return null;
+      return {
+        lat: lat ?? gpsState.lat,
+        lon: lon ?? gpsState.lon,
+        fix_quality: fix,
+        satellites:  isNaN(sats) ? 0 : sats,
+      };
+    }
+
+    function parseGPVTG(f) {
+      // $GPVTG,course_T,T,course_M,M,knots,N,km/h,K,...
+      const crs   = parseFloat(f[1]);
+      const knots = parseFloat(f[5]);
+      const kmh   = parseFloat(f[7]);
+      const speed_mph = !isNaN(knots) ? knots * KNOTS_TO_MPH
+                      : !isNaN(kmh)   ? kmh   * KMH_TO_MPH
+                      : null;
+      if (speed_mph === null) return null;
+      return { speed_mph, heading_deg: isNaN(crs) ? gpsState.heading_deg : crs };
+    }
+
+    // Entry point for any complete NMEA sentence (real or injected for testing).
+    function processNMEA(sentence) {
+      sentence = sentence.trim();
+      if (!sentence.startsWith('$')) return;
+      if (!checksumOk(sentence)) { console.debug('[GPS] bad checksum:', sentence); return; }
+
+      const fields = sentence.split(',');
+      const type   = fields[0].slice(1);  // strip $, e.g. "GPRMC"
+
+      let update = null;
+      if      (type === 'GPRMC' || type === 'GNRMC') update = parseGPRMC(fields);
+      else if (type === 'GPGGA' || type === 'GNGGA') update = parseGPGGA(fields);
+      else if (type === 'GPVTG' || type === 'GNVTG') update = parseGPVTG(fields);
+      if (!update) return;
+
+      Object.assign(gpsState, update, { connected: true, simulated: false, last_update: Date.now() });
+      updateDeltaWeight();
+      recalculate();
+    }
+
+    // ── Web Serial — GPS ──────────────────────────────────────────────────
+
+    let gpsPort   = null;
+    let gpsReader = null;
+
+    async function connectGPS() {
+      if (!navigator.serial) { alert('Web Serial requires Chrome or Edge.'); return; }
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: GPS_BAUD_RATE, dataBits: 8, stopBits: 1, parity: 'none' });
+        gpsPort = port;
+        gpsState.connected = true;
+        gpsState.simulated = false;
+        updateStatusBar();
+        _readGPSPort(port);
+        console.debug('[GPS] Port opened at', GPS_BAUD_RATE, 'baud');
+      } catch (err) {
+        console.debug('[GPS] Connect cancelled:', err.message);
+      }
+    }
+
+    async function _readGPSPort(port) {
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      gpsReader = decoder.readable.getReader();
+      let buf = '';
+      try {
+        for (;;) {
+          const { value, done } = await gpsReader.read();
+          if (done) break;
+          buf += value;
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            processNMEA(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+          }
+        }
+      } catch (err) {
+        console.debug('[GPS] Read error:', err.message);
+      } finally {
+        gpsState.connected = false;
+        gpsState.simulated = true;   // fall back to simulation
+        gpsReader = null;
+        updateStatusBar();
+        console.debug('[GPS] Disconnected — falling back to GPS simulation');
+      }
+    }
+
+    // ── Web Serial — Scale ────────────────────────────────────────────────
+
+    let scalePort   = null;
+    let scaleReader = null;
+
+    // Accept any line containing a float in 0–100,000 lbs range.
+    function parseScaleWeight(line) {
+      const match = line.match(/[-+]?\d+\.?\d*/);
+      if (!match) return null;
+      const val = parseFloat(match[0]);
+      return (isNaN(val) || val < 0 || val > 100000) ? null : val;
+    }
+
+    async function connectScale() {
+      if (!navigator.serial) { alert('Web Serial requires Chrome or Edge.'); return; }
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: SCALE_BAUD_RATE, dataBits: 8, stopBits: 1, parity: 'none' });
+        scalePort = port;
+        scaleState.connected = true;
+        scaleState.simulated = false;
+        updateStatusBar();
+        _readScalePort(port);
+        console.debug('[SCALE] Port opened at', SCALE_BAUD_RATE, 'baud');
+      } catch (err) {
+        console.debug('[SCALE] Connect cancelled:', err.message);
+      }
+    }
+
+    async function _readScalePort(port) {
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      scaleReader = decoder.readable.getReader();
+      let buf = '';
+      try {
+        for (;;) {
+          const { value, done } = await scaleReader.read();
+          if (done) break;
+          buf += value;
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            const weight = parseScaleWeight(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+            if (weight !== null) {
+              pushWeightSample(weight);
+              updateDeltaWeight();
+              scaleState.last_update = Date.now();
+              recalculate();
+            }
+          }
+        }
+      } catch (err) {
+        console.debug('[SCALE] Read error:', err.message);
+      } finally {
+        scaleState.connected = false;
+        scaleState.simulated = true;  // fall back to simulation
+        scaleReader = null;
+        updateStatusBar();
+        console.debug('[SCALE] Disconnected — falling back to scale simulation');
+      }
+    }
+
+    // ── ASC Engine ────────────────────────────────────────────────────────
+
+    const COVERAGE_CELL_FT = 5;  // one cell per section-width
+
+    function cellKey(lat, lon, cosLat) {
+      const latCell = Math.round(lat / (COVERAGE_CELL_FT / 364000));
+      const lonCell = Math.round(lon / (COVERAGE_CELL_FT / (364000 * cosLat)));
+      return `${latCell}_${lonCell}`;
+    }
+
+    // Check each section against existing coverage, update state.
+    // Called BEFORE marking so first pass never self-closes.
+    function runASCCheck() {
+      if (!settings.asc_enabled || !jobState.active) return false;
+
+      const cosLat  = Math.cos(gpsState.lat * Math.PI / 180);
+      const perp    = (gpsState.heading_deg + 90) * Math.PI / 180;
+      const headRad = gpsState.heading_deg * Math.PI / 180;
+      // Look slightly ahead to give advance warning before driving onto covered ground
+      const aLat    = gpsState.lat + Math.cos(headRad) * (COVERAGE_CELL_FT * 0.5) / 364000;
+      const aLon    = gpsState.lon + Math.sin(headRad) * (COVERAGE_CELL_FT * 0.5) / (364000 * cosLat);
+      const half    = (sections.length - 1) / 2;
+
+      let changed = false;
+      for (let i = 0; i < sections.length; i++) {
+        const sec = sections[i];
+        if (sec.manual_override) continue;
+
+        const off     = (i - half) * settings.section_width_ft;
+        const dLat    = Math.cos(perp) * off / 364000;
+        const dLon    = Math.sin(perp) * off / (364000 * cosLat);
+        const covered = jobState.coverage_cells.has(cellKey(aLat + dLat, aLon + dLon, cosLat));
+
+        if (covered !== sec.asc_covered) {
+          sections[i] = { ...sec, asc_covered: covered, active: !covered };
+          changed = true;
+        }
+      }
+      if (changed) renderSections();
+      return changed;
+    }
+
+    // Mark every section cell at the current position as covered.
+    // Called AFTER runASCCheck so the current pass doesn't immediately self-close.
+    function markSwathCoverage() {
+      if (!jobState.active) return;
+      if (gpsState.speed_mph < settings.min_operating_speed_mph) return;
+
+      const cosLat = Math.cos(gpsState.lat * Math.PI / 180);
+      const perp   = (gpsState.heading_deg + 90) * Math.PI / 180;
+      const half   = (sections.length - 1) / 2;
+
+      for (let i = 0; i < sections.length; i++) {
+        const off  = (i - half) * settings.section_width_ft;
+        const dLat = Math.cos(perp) * off / 364000;
+        const dLon = Math.sin(perp) * off / (364000 * cosLat);
+        jobState.coverage_cells.add(cellKey(gpsState.lat + dLat, gpsState.lon + dLon, cosLat));
+      }
+    }
+
+    // ── Job Storage ───────────────────────────────────────────────────────
+
+    const JOBS_STORAGE_KEY = 'spreader_jobs';
+
+    function loadJobs() {
+      try { return JSON.parse(localStorage.getItem(JOBS_STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function persistJob(fieldName) {
+      const lbs   = jobState.total_applied_lbs;
+      const acres = jobState.total_acres;
+      const job   = {
+        id:                jobState.start_time,
+        field_name:        fieldName || 'Unnamed Field',
+        start_time:        jobState.start_time,
+        end_time:          Date.now(),
+        total_applied_lbs: Math.round(lbs),
+        total_acres:       parseFloat(acres.toFixed(2)),
+        avg_rate_lbs_acre: acres > 0 ? Math.round(lbs / acres) : 0,
+        gps_track:         jobState.gps_track,
+      };
+      const jobs = loadJobs();
+      jobs.unshift(job);
+      try { localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(jobs)); }
+      catch (e) { console.debug('[JOB] localStorage full:', e.message); }
+    }
+
+    function showJobSummary() {
+      const lbs     = jobState.total_applied_lbs;
+      const acres   = jobState.total_acres;
+      const elapsed = Math.floor((Date.now() - jobState.start_time) / 1000);
+      const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+
+      document.getElementById('summary-lbs').textContent   = Math.round(lbs).toLocaleString() + ' lbs';
+      document.getElementById('summary-tons').textContent  = (lbs / 2000).toFixed(1) + ' tons';
+      document.getElementById('summary-acres').textContent = acres.toFixed(1) + ' ac';
+      document.getElementById('summary-rate').textContent  = (acres > 0 ? Math.round(lbs / acres) : 0).toLocaleString() + ' lbs/ac';
+      document.getElementById('summary-time').textContent  = `${h}:${m}`;
+      document.getElementById('summary-field-name').value  = '';
+      document.getElementById('job-summary-overlay').style.display = '';
+    }
+
+    function saveAndCloseJob() {
+      const name = document.getElementById('summary-field-name').value.trim();
+      persistJob(name);
+      document.getElementById('job-summary-overlay').style.display = 'none';
+      updateJobDisplay();
+    }
+
+    function discardJob() {
+      document.getElementById('job-summary-overlay').style.display = 'none';
+    }
+
+    // ── Settings Panel ────────────────────────────────────────────────────
+
+    function openSettings() {
+      document.getElementById('set-target-rate').value  = settings.target_rate_lbs_per_acre;
+      document.getElementById('set-spread-width').value = settings.spread_width_ft;
+      document.getElementById('set-section-count').value = settings.section_count;
+      document.getElementById('set-section-width').value = settings.section_width_ft;
+      document.getElementById('set-overlap').value      = Math.round(settings.asc_overlap_threshold * 100);
+      document.getElementById('set-min-speed').value    = settings.min_operating_speed_mph;
+      document.getElementById('settings-panel').style.display = '';
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-panel').style.display = 'none';
+    }
+
+    function applySettings() {
+      const num = (id) => parseFloat(document.getElementById(id).value);
+      const int = (id) => parseInt(document.getElementById(id).value);
+
+      const tr = num('set-target-rate');
+      const sw = num('set-spread-width');
+      const sc = int('set-section-count');
+      const sw2 = num('set-section-width');
+      const ov = num('set-overlap') / 100;
+      const ms = num('set-min-speed');
+
+      if (!isNaN(tr) && tr >= 0)    { settings.target_rate_lbs_per_acre = tr; document.getElementById('input-target-rate').value = tr; }
+      if (!isNaN(sw) && sw > 0)     settings.spread_width_ft           = sw;
+      if (!isNaN(sc) && sc >= 1)    { settings.section_count = sc; rebuildSections(); }
+      if (!isNaN(sw2) && sw2 > 0)   settings.section_width_ft          = sw2;
+      if (!isNaN(ov) && ov >= 0 && ov <= 1) settings.asc_overlap_threshold = ov;
+      if (!isNaN(ms) && ms >= 0)    settings.min_operating_speed_mph   = ms;
+    }
+
+    function rebuildSections() {
+      sections = Array.from({ length: settings.section_count }, (_, i) => ({
+        index: i, active: true, manual_override: false, asc_covered: false,
+      }));
+      renderSections();
+    }
+
+    // ── Job History Panel ─────────────────────────────────────────────────
+
+    function openHistory() {
+      renderHistoryList();
+      document.getElementById('history-panel').style.display = '';
+    }
+
+    function closeHistory() {
+      document.getElementById('history-panel').style.display = 'none';
+    }
+
+    function renderHistoryList() {
+      const jobs = loadJobs();
+      const list = document.getElementById('history-list');
+      if (jobs.length === 0) {
+        list.innerHTML = '<div class="history-empty">No saved jobs yet.<br>Complete a job to see it here.</div>';
+        return;
+      }
+      list.innerHTML = jobs.map(j => {
+        const d       = new Date(j.start_time);
+        const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        return `<div class="history-item">
+          <div class="history-date">${dateStr} · ${timeStr}</div>
+          <div class="history-field">${j.field_name}</div>
+          <div class="history-stats">${j.total_applied_lbs.toLocaleString()} lbs · ${j.total_acres} ac · ${j.avg_rate_lbs_acre.toLocaleString()} lbs/ac</div>
+        </div>`;
+      }).join('');
+    }
+
+    function exportAllJobs() {
+      const jobs = loadJobs();
+      if (jobs.length === 0) { alert('No jobs to export.'); return; }
+      const blob = new Blob([JSON.stringify(jobs, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `spreader-jobs-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
+
+    // ── Simulation Engine ─────────────────────────────────────────────────
+
+    let simState = {
+      lat:             SIM_START_LAT,
+      lon:             SIM_START_LON,
+      speed_mph:       SIM_SPEED_MPH,
+      heading_deg:     0,            // start heading north
+      raw_weight:      SIM_INITIAL_WEIGHT,
+      pass_dist_ft:    0,
+      pass_count:      0,
+      interval_id:     null,
+    };
+
+    function startSimulation() {
+      simState.lat          = SIM_START_LAT;
+      simState.lon          = SIM_START_LON;
+      simState.speed_mph    = SIM_SPEED_MPH;
+      simState.heading_deg  = 0;
+      simState.raw_weight   = SIM_INITIAL_WEIGHT;
+      simState.pass_dist_ft = 0;
+      simState.pass_count   = 0;
+
+      gpsState.simulated   = true;
+      scaleState.simulated = true;
+
+      simState.interval_id = setInterval(simTick, SIM_TICK_MS);
+      simTick();  // fire immediately so display isn't blank for first second
+      console.debug('[SIM] Simulation started');
+    }
+
+    function stopSimulation() {
+      if (simState.interval_id !== null) {
+        clearInterval(simState.interval_id);
+        simState.interval_id = null;
+      }
+      gpsState.simulated   = false;
+      scaleState.simulated = false;
+      console.debug('[SIM] Simulation stopped');
+    }
+
+    function simTick() {
+      const speedFtPerSec = simState.speed_mph * MPH_TO_FT_PER_SEC;
+
+      // Move position along current heading
+      const rad = simState.heading_deg * Math.PI / 180;
+      const LAT_PER_FT = 1 / 364000;
+      const LON_PER_FT = 1 / (364000 * Math.cos(simState.lat * Math.PI / 180));
+      simState.lat         += Math.cos(rad) * speedFtPerSec * LAT_PER_FT;
+      simState.lon         += Math.sin(rad) * speedFtPerSec * LON_PER_FT;
+      simState.pass_dist_ft += speedFtPerSec;
+
+      // Turn at end of each pass, step over by one spread width
+      if (simState.pass_dist_ft >= SIM_PASS_LENGTH_FT) {
+        simState.pass_dist_ft = 0;
+        simState.pass_count++;
+        simState.heading_deg = simState.heading_deg === 0 ? 180 : 0;
+        simState.lon += DEFAULT_SPREAD_WIDTH_FT * LON_PER_FT;  // step east each pass
+        console.debug(`[SIM] Pass ${simState.pass_count}, now heading ${simState.heading_deg}°`);
+      }
+
+      // Vary speed naturally (±0.5 mph)
+      simState.speed_mph = SIM_SPEED_MPH + (Math.random() - 0.5) * 1.0;
+      simState.speed_mph = Math.max(4.0, Math.min(6.0, simState.speed_mph));
+
+      // Update GPS state
+      gpsState.lat         = simState.lat;
+      gpsState.lon         = simState.lon;
+      gpsState.speed_mph   = simState.speed_mph;
+      gpsState.heading_deg = simState.heading_deg;
+      gpsState.fix_quality = 4;   // RTK fixed
+      gpsState.satellites  = 8 + Math.floor(Math.random() * 3);  // 8–10 sats
+      gpsState.last_update = Date.now();
+
+      // Decrease weight by the expected spread rate + noise
+      const width      = calcState.effective_width_ft || DEFAULT_SPREAD_WIDTH_FT;
+      const lbsPerSec  = (settings.target_rate_lbs_per_acre * simState.speed_mph * MPH_TO_FT_PER_SEC * width) / SQ_FT_PER_ACRE;
+      const noise      = (Math.random() - 0.5) * (SIM_WEIGHT_NOISE_LBS * 2);
+      simState.raw_weight = Math.max(0, simState.raw_weight - lbsPerSec + noise);
+
+      // Push through smoothing buffer and update delta
+      pushWeightSample(simState.raw_weight);
+      updateDeltaWeight();
+      scaleState.last_update = Date.now();
+
+      recalculate();
+    }
+
+    // Auto-start simulation when Web Serial is unavailable.
+    // When real ports are connected (Step 6), simulation stops for that input.
+    function initHardwareOrSim() {
+      if (!navigator.serial) {
+        console.debug('[SIM] Web Serial API not available — simulation mode');
+        startSimulation();
+        return;
+      }
+      // Web Serial is available: start simulation as default until ports are connected
+      startSimulation();
+    }
+
+    // ── Section Bar ───────────────────────────────────────────────────────
+    function renderSections() {
+      const container = document.getElementById('sections-container');
+      container.innerHTML = '';
+      sections.forEach((sec, i) => {
+        const btn = document.createElement('button');
+        let cls = 'section-btn ';
+        if (sec.manual_override) {
+          cls += 'manual';
+        } else if (sec.active) {
+          cls += 'open';
+        } else {
+          cls += 'closed';
+        }
+        btn.className = cls;
+        btn.textContent = i + 1;
+        btn.title = `Section ${i + 1} — click to toggle manual override`;
+        btn.addEventListener('click', () => toggleSectionOverride(i));
+        container.appendChild(btn);
+      });
+    }
+
+    function updateSectionState(index, updates) {
+      sections[index] = { ...sections[index], ...updates };
+      renderSections();
+    }
+
+    function toggleSectionOverride(index) {
+      const sec = sections[index];
+      const nowOverridden = !sec.manual_override;
+      updateSectionState(index, {
+        manual_override: nowOverridden,
+        active: nowOverridden ? false : !sec.asc_covered,
+      });
+    }
+
+    // ── Clock ─────────────────────────────────────────────────────────────
+    function updateClock() {
+      const now = new Date();
+      const h = String(now.getHours()).padStart(2, '0');
+      const m = String(now.getMinutes()).padStart(2, '0');
+      const s = String(now.getSeconds()).padStart(2, '0');
+      document.getElementById('clock').textContent = `${h}:${m}:${s}`;
+    }
+
+    // ── Map Canvas ────────────────────────────────────────────────────────
+
+    function resizeCanvas() {
+      const canvas = document.getElementById('coverage-canvas');
+      const panel  = document.getElementById('panel-map');
+      const header = panel.querySelector('.panel-header');
+      canvas.width  = panel.clientWidth  - 2;
+      canvas.height = panel.clientHeight - header.offsetHeight - 2;
+      drawCoverageMap();
+    }
+
+    // Build a coordinate transform from lat/lon → canvas pixel.
+    // Returns null if no points available.
+    function buildMapTransform(W, H) {
+      const hasGPS = gpsState.connected || gpsState.simulated;
+      const pts    = [...mapPoints];
+      if (hasGPS) pts.push({ lat: gpsState.lat, lon: gpsState.lon });
+      if (pts.length === 0) return null;
+
+      const originLat = pts[0].lat;
+      const originLon = pts[0].lon;
+      const cosLat    = Math.cos(originLat * Math.PI / 180);
+      const FT_LAT    = 364000;
+      const FT_LON    = 364000 * cosLat;
+
+      function toFt(lat, lon) {
+        return { x: (lon - originLon) * FT_LON, y: (lat - originLat) * FT_LAT };
+      }
+
+      const hw = (calcState.effective_width_ft || DEFAULT_SPREAD_WIDTH_FT) / 2;
+      let minX = -hw, maxX = hw, minY = -hw, maxY = hw;
+      for (const p of pts) {
+        const { x, y } = toFt(p.lat, p.lon);
+        if (x - hw < minX) minX = x - hw;
+        if (x + hw > maxX) maxX = x + hw;
+        if (y - hw < minY) minY = y - hw;
+        if (y + hw > maxY) maxY = y + hw;
+      }
+
+      const padX = Math.max((maxX - minX) * 0.15, hw * 2);
+      const padY = Math.max((maxY - minY) * 0.15, hw * 2);
+      minX -= padX; maxX += padX;
+      minY -= padY; maxY += padY;
+
+      const scale   = Math.min(W / (maxX - minX), H / (maxY - minY));
+      const offX    = (W - (maxX - minX) * scale) / 2 - minX * scale;
+      const offY    = (H - (maxY - minY) * scale) / 2 + maxY * scale;
+
+      return {
+        toPixel: (lat, lon) => {
+          const { x, y } = toFt(lat, lon);
+          return { x: offX + x * scale, y: offY - y * scale };
+        },
+        ftPerPixel: 1 / scale,
+        cosLat,
+      };
+    }
+
+    function drawCoverageMap() {
+      const canvas = document.getElementById('coverage-canvas');
+      if (!canvas) return;
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      if (W === 0 || H === 0) return;
+
+      const hasGPS = gpsState.connected || gpsState.simulated;
+
+      ctx.fillStyle = '#0A0C12';
+      ctx.fillRect(0, 0, W, H);
+
+      // Faint grid
+      ctx.strokeStyle = '#1A1E2E';
+      ctx.lineWidth = 1;
+      for (let x = 0; x <= W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+      for (let y = 0; y <= H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+      if (!hasGPS && mapPoints.length === 0) {
+        ctx.fillStyle = '#2A2F45';
+        ctx.font = '13px Segoe UI, system-ui, sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('Start a job to begin mapping coverage', W / 2, H / 2);
+        return;
+      }
+
+      const t = buildMapTransform(W, H);
+      if (!t) return;
+
+      // Covered swaths
+      if (mapPoints.length >= 2) {
+        ctx.fillStyle = 'rgba(34, 197, 94, 0.35)';
+        for (let i = 1; i < mapPoints.length; i++) {
+          const prev = mapPoints[i - 1];
+          const curr = mapPoints[i];
+          const hw   = (curr.width_ft || DEFAULT_SPREAD_WIDTH_FT) / 2;
+          const perp = (curr.heading + 90) * Math.PI / 180;
+          const dLat = Math.cos(perp) * hw / 364000;
+          const dLon = Math.sin(perp) * hw / (364000 * t.cosLat);
+          const a = t.toPixel(prev.lat + dLat, prev.lon + dLon);
+          const b = t.toPixel(prev.lat - dLat, prev.lon - dLon);
+          const c = t.toPixel(curr.lat - dLat, curr.lon - dLon);
+          const d = t.toPixel(curr.lat + dLat, curr.lon + dLon);
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y); ctx.lineTo(d.x, d.y);
+          ctx.lineTo(c.x, c.y); ctx.lineTo(b.x, b.y);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+
+      // Machine position arrow
+      if (hasGPS) {
+        const { x, y } = t.toPixel(gpsState.lat, gpsState.lon);
+        const rad = gpsState.heading_deg * Math.PI / 180;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(rad);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.moveTo(0, -12); ctx.lineTo(-8, 8); ctx.lineTo(0, 3); ctx.lineTo(8, 8);
+        ctx.closePath(); ctx.fill();
+        ctx.restore();
+
+        // Section dots spread perpendicular to heading
+        const perp = (gpsState.heading_deg + 90) * Math.PI / 180;
+        const sw = settings.section_width_ft;
+        const half = (sections.length - 1) / 2;
+        for (let i = 0; i < sections.length; i++) {
+          const off = (i - half) * sw;
+          const dLat = Math.cos(perp) * off / 364000;
+          const dLon = Math.sin(perp) * off / (364000 * t.cosLat);
+          const sp = t.toPixel(gpsState.lat + dLat, gpsState.lon + dLon);
+          const sec = sections[i];
+          ctx.fillStyle = sec.manual_override ? '#EF4444' : sec.active ? '#22C55E' : '#F59E0B';
+          ctx.beginPath(); ctx.arc(sp.x, sp.y, 3, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+
+      // Scale bar (bottom-right)
+      const ftPerPx = t.ftPerPixel;
+      const candidates = [10, 25, 50, 100, 200, 250, 500, 1000];
+      let niceFt = candidates[0];
+      for (const c of candidates) {
+        if (Math.abs(c / ftPerPx - 80) < Math.abs(niceFt / ftPerPx - 80)) niceFt = c;
+      }
+      const barPx = niceFt / ftPerPx;
+      const bx = W - barPx - 20, by = H - 16;
+      ctx.fillStyle = 'rgba(0,0,0,0.55)';
+      ctx.fillRect(bx - 6, by - 18, barPx + 12, 24);
+      ctx.strokeStyle = '#9CA3AF'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by);
+      ctx.moveTo(bx, by - 5); ctx.lineTo(bx, by + 3);
+      ctx.moveTo(bx + barPx, by - 5); ctx.lineTo(bx + barPx, by + 3);
+      ctx.stroke();
+      ctx.fillStyle = '#9CA3AF';
+      ctx.font = '11px Segoe UI, system-ui, sans-serif';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+      ctx.fillText(`${niceFt} ft`, bx + barPx / 2, by - 1);
+    }
+
+    // ── Status Bar Updates ────────────────────────────────────────────────
+    function updateStatusBar() {
+      const gpsDot    = document.getElementById('gps-dot');
+      const gpsText   = document.getElementById('gps-status-text');
+      const scaleDot  = document.getElementById('scale-dot');
+      const scaleText = document.getElementById('scale-status-text');
+      const simBadge  = document.getElementById('sim-badge');
+      const btnGPS    = document.getElementById('btn-connect-gps');
+      const btnScale  = document.getElementById('btn-connect-scale');
+
+      simBadge.style.display = (gpsState.simulated || scaleState.simulated) ? '' : 'none';
+
+      if (gpsState.connected || gpsState.simulated) {
+        const fixLabel = { 0: 'No Fix', 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'Float' };
+        const fix = gpsState.simulated ? 'SIM' : (fixLabel[gpsState.fix_quality] || 'GPS');
+        gpsDot.className = 'status-dot live';
+        gpsText.textContent = `GPS · ${gpsState.satellites} sats · ${fix}`;
+        gpsText.style.color = 'var(--text-value)';
+        btnGPS.style.display = 'none';
+      } else {
+        gpsDot.className = 'status-dot err';
+        gpsText.textContent = 'GPS · Disconnected';
+        gpsText.style.color = 'var(--red)';
+        btnGPS.style.display = '';
+      }
+
+      if (scaleState.connected || scaleState.simulated) {
+        scaleDot.className = 'status-dot live';
+        scaleText.textContent = scaleState.simulated ? 'Scale · SIM' : 'Scale · Connected';
+        scaleText.style.color = 'var(--text-value)';
+        btnScale.style.display = 'none';
+      } else {
+        scaleDot.className = 'status-dot';
+        scaleText.textContent = 'Scale · Disconnected';
+        scaleText.style.color = 'var(--text-secondary)';
+        btnScale.style.display = '';
+      }
+    }
+
+    // ── Display Updates ───────────────────────────────────────────────────
+    function updateMetricsDisplay() {
+      const isScale  = scaleState.connected || scaleState.simulated;
+      const isGPS    = gpsState.connected   || gpsState.simulated;
+      const isSpreading = isScale && isGPS && calcState.rate_lbs_per_acre > 0;
+
+      // Weight — amber when live data is updating
+      document.getElementById('metric-weight').classList.toggle('is-live', isScale);
+      const weight = scaleState.weight_lbs;
+      document.getElementById('display-weight').innerHTML = isScale
+        ? `${weight.toLocaleString('en-US', { maximumFractionDigits: 0 })}<span class="metric-unit">lbs</span>`
+        : `—<span class="metric-unit">lbs</span>`;
+
+      // Rate — color indicates on-target status; shows whenever spreading (job or not)
+      const rateBlock = document.getElementById('metric-rate');
+      rateBlock.classList.remove('rate-spreading', 'rate-on-target', 'rate-over', 'rate-under');
+      const rate   = calcState.rate_lbs_per_acre;
+      const target = settings.target_rate_lbs_per_acre;
+      if (isSpreading && jobState.active && target > 0) {
+        const pct = (rate - target) / target;
+        if      (Math.abs(pct) <= 0.10) rateBlock.classList.add('rate-on-target');
+        else if (pct > 0.10)            rateBlock.classList.add('rate-over');
+        else                            rateBlock.classList.add('rate-under');
+      } else if (isSpreading) {
+        rateBlock.classList.add('rate-spreading');
+      }
+      document.getElementById('display-rate').innerHTML = isSpreading
+        ? `${Math.round(rate).toLocaleString()}<span class="metric-unit">lbs/ac</span>`
+        : `—<span class="metric-unit">lbs/ac</span>`;
+
+      // Speed
+      document.getElementById('display-speed').innerHTML = isGPS
+        ? `${gpsState.speed_mph.toFixed(1)}<span class="metric-unit">mph</span>`
+        : `—<span class="metric-unit">mph</span>`;
+
+      // Load remaining
+      const tonsLeft = weight / 2000;
+      document.getElementById('display-load').innerHTML = isScale
+        ? `${tonsLeft.toFixed(1)}<span class="metric-unit">tons</span>`
+        : `—<span class="metric-unit">tons</span>`;
+    }
+
+    function updateJobDisplay() {
+      const rate   = calcState.rate_lbs_per_acre;
+      const target = settings.target_rate_lbs_per_acre;
+
+      document.getElementById('display-rate-actual').textContent =
+        jobState.active ? Math.round(rate).toLocaleString() : '—';
+
+      // On-target status label
+      const statusEl = document.getElementById('rate-status-label');
+      if (jobState.active && rate > 0 && target > 0) {
+        const pct = (rate - target) / target;
+        const absPct = Math.round(Math.abs(pct) * 100);
+        if (Math.abs(pct) <= 0.10) {
+          statusEl.textContent = 'ON TARGET';
+          statusEl.className = 'rate-status ok';
+        } else if (pct > 0.10) {
+          statusEl.textContent = `HIGH +${absPct}%`;
+          statusEl.className = 'rate-status over';
+        } else {
+          statusEl.textContent = `LOW  −${absPct}%`;
+          statusEl.className = 'rate-status under';
+        }
+      } else {
+        statusEl.textContent = jobState.active ? 'WAITING FOR DATA' : '—';
+        statusEl.className = 'rate-status idle';
+      }
+
+      const lbs   = jobState.total_applied_lbs;
+      const acres = jobState.total_acres;
+      const avg   = acres > 0 ? lbs / acres : 0;
+
+      document.getElementById('display-total-lbs').innerHTML =
+        `${Math.round(lbs).toLocaleString()}<span class="total-unit">lbs</span>`;
+      document.getElementById('display-total-acres').innerHTML =
+        `${acres.toFixed(1)}<span class="total-unit">ac</span>`;
+      document.getElementById('display-avg-rate').innerHTML =
+        `${avg > 0 ? Math.round(avg).toLocaleString() : '—'}<span class="total-unit">lb/ac</span>`;
+
+      const tonsLeft = scaleState.weight_lbs / 2000;
+      document.getElementById('display-tons-left').textContent =
+        (scaleState.connected || scaleState.simulated) ? tonsLeft.toFixed(1) : '—';
+    }
+
+    function updateJobTimer() {
+      if (!jobState.active || !jobState.start_time) {
+        document.getElementById('display-timer').textContent = '--:--:--';
+        return;
+      }
+      const elapsed = Math.floor((Date.now() - jobState.start_time) / 1000);
+      const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+      const s = String(elapsed % 60).padStart(2, '0');
+      document.getElementById('display-timer').textContent = `${h}:${m}:${s}`;
+    }
+
+    // ── Job Button ────────────────────────────────────────────────────────
+    document.getElementById('btn-job').addEventListener('click', () => {
+      if (jobState.active) {
+        stopJob();
+      } else {
+        startJob();
+      }
+    });
+
+    function startJob() {
+      jobState.active            = true;
+      jobState.start_time        = Date.now();
+      jobState.start_weight      = scaleState.weight_lbs;
+      jobState.total_applied_lbs = 0;
+      jobState.total_acres       = 0;
+      jobState.gps_track         = [];
+      jobState.coverage_cells    = new Set();
+      mapPoints                  = [];
+
+      const btn = document.getElementById('btn-job');
+      btn.textContent = 'STOP JOB';
+      btn.className = 'btn btn-stop';
+    }
+
+    function stopJob() {
+      jobState.active = false;
+
+      const btn = document.getElementById('btn-job');
+      btn.textContent = 'START JOB';
+      btn.className = 'btn btn-start';
+
+      showJobSummary();
+    }
+
+    // ── Tare ──────────────────────────────────────────────────────────────
+    document.getElementById('btn-tare').addEventListener('click', () => {
+      scaleState.tare_offset = scaleState.weight_lbs + scaleState.tare_offset;
+    });
+
+    // ── ASC Toggle ────────────────────────────────────────────────────────
+    document.getElementById('asc-toggle').addEventListener('change', (e) => {
+      settings.asc_enabled = e.target.checked;
+    });
+
+    // ── Target Rate Input ─────────────────────────────────────────────────
+    document.getElementById('input-target-rate').addEventListener('change', (e) => {
+      const val = parseFloat(e.target.value);
+      if (!isNaN(val) && val >= 0) {
+        settings.target_rate_lbs_per_acre = val;
+      }
+    });
+
+    // ── Canvas Resize Observer ────────────────────────────────────────────
+    const mapResizeObserver = new ResizeObserver(() => resizeCanvas());
+    mapResizeObserver.observe(document.getElementById('panel-map'));
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    renderSections();
+    updateClock();
+    setInterval(updateClock, 1000);
+    setInterval(updateJobTimer, 1000);
+    requestAnimationFrame(resizeCanvas);
+    initHardwareOrSim();
+  </script>
+</body>
+</html>

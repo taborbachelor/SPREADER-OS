@@ -6,7 +6,16 @@
       "Bash(git push *)",
       "Bash(git mv *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git branch *)",
+      "Bash(git fetch *)",
+      "Bash(git ls-tree *)",
+      "Bash(gh repo *)",
+      "Bash(git checkout *)",
+      "PowerShell(Get-Command *)",
+      "PowerShell(& \"C:\\\\Program Files\\\\GitHub CLI\\\\gh.exe\" repo edit taborbachelor/spreader-project --default-branch main)",
+      "Bash(git commit *)",
+      "Bash(git rm *)"
     ]
   }
 }
