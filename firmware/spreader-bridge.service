@@ -1,0 +1,17 @@
+[Unit]
+Description=Spreader HX711 WebSocket Bridge
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/spreader-project/firmware
+ExecStart=/home/pi/spreader-project/.venv/bin/python3 /home/pi/spreader-project/firmware/hx711-bridge.py
+Restart=always
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

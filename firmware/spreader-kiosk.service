@@ -1,0 +1,29 @@
+[Unit]
+Description=Spreader Kiosk UI
+After=graphical.target spreader-bridge.service
+Wants=spreader-bridge.service
+
+[Service]
+Type=simple
+User=pi
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/home/pi/.Xauthority
+ExecStartPre=/bin/sleep 5
+ExecStart=/usr/bin/chromium-browser \
+    --kiosk \
+    --noerrdialogs \
+    --disable-infobars \
+    --disable-session-crashed-bubble \
+    --disable-restore-session-state \
+    --no-first-run \
+    --disable-translate \
+    --touch-events=enabled \
+    --allow-file-access-from-files \
+    file:///home/pi/spreader-project/software/prototype/index.html
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical.target
