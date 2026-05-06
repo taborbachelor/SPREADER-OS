@@ -344,6 +344,101 @@
     .toggle input:checked + .toggle-track { background: var(--green); border-color: var(--green); }
     .toggle input:checked + .toggle-track::before { transform: translateX(16px); background: #000; }
 
+    /* ── Icon Buttons ────────────────────────────────────────────────── */
+    .icon-btn {
+      background: none;
+      border: none;
+      color: var(--text-label);
+      font-size: 15px;
+      cursor: pointer;
+      padding: 4px 7px;
+      border-radius: 3px;
+      font-family: inherit;
+      line-height: 1;
+    }
+    .icon-btn:hover { background: var(--bg-raised); color: var(--text-value); }
+
+    /* ── Overlay ─────────────────────────────────────────────────────── */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.75);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+    }
+
+    /* ── Modal ───────────────────────────────────────────────────────── */
+    .modal {
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 24px;
+      width: 360px;
+      max-width: 92vw;
+    }
+    .modal-title {
+      font-size: 16px; font-weight: 700;
+      letter-spacing: 0.08em; text-transform: uppercase;
+      color: var(--text-label); margin-bottom: 16px;
+    }
+    .modal-stat {
+      display: flex; justify-content: space-between; align-items: baseline;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .modal-stat-label { font-size: 11px; color: var(--text-label); text-transform: uppercase; letter-spacing: 0.08em; }
+    .modal-stat-value { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+    .modal-field { margin-top: 16px; }
+    .modal-field label { font-size: 11px; color: var(--text-label); text-transform: uppercase; letter-spacing: 0.08em; display: block; margin-bottom: 6px; }
+    .modal-field input {
+      width: 100%;
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-value); font-size: 16px; padding: 8px 10px; font-family: inherit;
+    }
+    .modal-field input:focus { outline: 2px solid var(--amber); border-color: transparent; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+    .modal-actions .btn { flex: 1; }
+
+    /* ── Side Panel ──────────────────────────────────────────────────── */
+    .side-panel {
+      position: fixed; top: 0; right: 0;
+      width: 300px; height: 100%;
+      background: var(--bg-panel);
+      border-left: 1px solid var(--border);
+      z-index: 50;
+      display: flex; flex-direction: column;
+      box-shadow: -6px 0 24px rgba(0,0,0,0.5);
+    }
+    .side-panel-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 14px; height: 44px;
+      border-bottom: 1px solid var(--border);
+      font-size: 12px; font-weight: 700;
+      letter-spacing: 0.1em; text-transform: uppercase;
+      flex-shrink: 0;
+    }
+    .side-panel-body { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 20px; }
+    .btn-close { background: none; border: none; color: var(--text-label); font-size: 18px; cursor: pointer; padding: 4px; border-radius: 3px; line-height: 1; }
+    .btn-close:hover { color: var(--text-value); }
+
+    /* ── Settings Rows ───────────────────────────────────────────────── */
+    .setting-group { display: flex; flex-direction: column; gap: 10px; }
+    .setting-group-title { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-label); padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .setting-label { font-size: 13px; color: var(--text-secondary); }
+    .setting-input {
+      background: var(--bg-raised); border: 1px solid var(--border); border-radius: 4px;
+      color: var(--text-value); font-size: 14px; font-weight: 600;
+      font-family: inherit; padding: 4px 8px; text-align: right; width: 80px;
+    }
+    .setting-input:focus { outline: 2px solid var(--amber); border-color: transparent; }
+
+    /* ── History List ────────────────────────────────────────────────── */
+    .history-item { background: var(--bg-raised); border-radius: 4px; padding: 10px 12px; border: 1px solid transparent; }
+    .history-item:hover { border-color: var(--border); }
+    .history-date { font-size: 11px; color: var(--text-label); margin-bottom: 2px; }
+    .history-field { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+    .history-stats { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+    .history-empty { color: var(--text-label); font-size: 13px; text-align: center; padding: 32px 0; }
+
     /* ── Rate Color States ────────────────────────────────────────────── */
     .metric-block.rate-spreading .metric-value { color: var(--amber); }
     .metric-block.rate-on-target .metric-value { color: var(--green); }
@@ -401,6 +496,8 @@
     </div>
 
     <div class="status-group">
+      <button class="icon-btn" onclick="openHistory()" title="Job History">☰</button>
+      <button class="icon-btn" onclick="openSettings()" title="Settings">⚙</button>
       <span id="clock">--:--:--</span>
     </div>
   </div>
@@ -502,6 +599,68 @@
         <input type="checkbox" id="asc-toggle" checked>
         <div class="toggle-track"></div>
       </label>
+    </div>
+  </div>
+
+  <!-- ── Job Summary Modal ──────────────────────────────────────────── -->
+  <div id="job-summary-overlay" class="overlay" style="display:none">
+    <div class="modal">
+      <div class="modal-title">Job Complete</div>
+      <div class="modal-stat"><span class="modal-stat-label">Applied</span><span class="modal-stat-value" id="summary-lbs">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Tons</span><span class="modal-stat-value" id="summary-tons">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Acres</span><span class="modal-stat-value" id="summary-acres">—</span></div>
+      <div class="modal-stat"><span class="modal-stat-label">Avg Rate</span><span class="modal-stat-value" id="summary-rate">—</span></div>
+      <div class="modal-stat" style="border:none"><span class="modal-stat-label">Duration</span><span class="modal-stat-value" id="summary-time">—</span></div>
+      <div class="modal-field">
+        <label>Field Name</label>
+        <input id="summary-field-name" type="text" placeholder="e.g. North Field" autocomplete="off">
+      </div>
+      <div class="modal-actions">
+        <button class="btn btn-start" onclick="saveAndCloseJob()">SAVE JOB</button>
+        <button class="btn btn-tare" onclick="discardJob()">DISCARD</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Settings Panel ─────────────────────────────────────────────── -->
+  <div id="settings-panel" class="side-panel" style="display:none">
+    <div class="side-panel-header">
+      <span>Settings</span>
+      <button class="btn-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <div class="setting-group">
+        <div class="setting-group-title">Application</div>
+        <div class="setting-row"><span class="setting-label">Target Rate (lbs/ac)</span><input class="setting-input" id="set-target-rate" type="number" min="0" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Spreader Geometry</div>
+        <div class="setting-row"><span class="setting-label">Total Width (ft)</span><input class="setting-input" id="set-spread-width" type="number" min="1" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Section Count</span><input class="setting-input" id="set-section-count" type="number" min="1" max="20" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Section Width (ft)</span><input class="setting-input" id="set-section-width" type="number" min="1" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Auto Section Control</div>
+        <div class="setting-row"><span class="setting-label">Overlap Threshold (%)</span><input class="setting-input" id="set-overlap" type="number" min="0" max="100" oninput="applySettings()"></div>
+        <div class="setting-row"><span class="setting-label">Min Speed (mph)</span><input class="setting-input" id="set-min-speed" type="number" min="0" step="0.1" oninput="applySettings()"></div>
+      </div>
+      <div class="setting-group">
+        <div class="setting-group-title">Hardware</div>
+        <div class="setting-row"><span class="setting-label">GPS Baud</span><span style="font-size:14px;color:var(--text-secondary)">19,200</span></div>
+        <div class="setting-row"><span class="setting-label">Scale Baud</span><span style="font-size:14px;color:var(--text-secondary)">9,600</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Job History Panel ──────────────────────────────────────────── -->
+  <div id="history-panel" class="side-panel" style="display:none">
+    <div class="side-panel-header">
+      <span>Job History</span>
+      <button class="btn-close" onclick="closeHistory()">✕</button>
+    </div>
+    <div class="side-panel-body">
+      <div id="history-list"></div>
+      <button class="btn btn-tare" onclick="exportAllJobs()">EXPORT ALL (JSON)</button>
     </div>
   </div>
 
@@ -639,6 +798,9 @@
       calcState.effective_width_ft   = calcState.active_section_count * settings.section_width_ft;
       calcState.rate_lbs_per_acre    = calculateRate();
 
+      // ASC: check before marking so current pass never self-closes
+      runASCCheck();
+
       if (jobState.active && gpsState.speed_mph >= settings.min_operating_speed_mph) {
         // Weight applied = starting weight minus current weight
         jobState.total_applied_lbs = Math.max(0, jobState.start_weight - scaleState.weight_lbs);
@@ -653,6 +815,8 @@
           heading:  gpsState.heading_deg,
           width_ft: calcState.effective_width_ft,
         });
+        // Mark coverage after recording so second pass detects overlap
+        markSwathCoverage();
       }
 
       updateStatusBar();
@@ -849,6 +1013,205 @@
         updateStatusBar();
         console.debug('[SCALE] Disconnected — falling back to scale simulation');
       }
+    }
+
+    // ── ASC Engine ────────────────────────────────────────────────────────
+
+    const COVERAGE_CELL_FT = 5;  // one cell per section-width
+
+    function cellKey(lat, lon, cosLat) {
+      const latCell = Math.round(lat / (COVERAGE_CELL_FT / 364000));
+      const lonCell = Math.round(lon / (COVERAGE_CELL_FT / (364000 * cosLat)));
+      return `${latCell}_${lonCell}`;
+    }
+
+    // Check each section against existing coverage, update state.
+    // Called BEFORE marking so first pass never self-closes.
+    function runASCCheck() {
+      if (!settings.asc_enabled || !jobState.active) return false;
+
+      const cosLat  = Math.cos(gpsState.lat * Math.PI / 180);
+      const perp    = (gpsState.heading_deg + 90) * Math.PI / 180;
+      const headRad = gpsState.heading_deg * Math.PI / 180;
+      // Look slightly ahead to give advance warning before driving onto covered ground
+      const aLat    = gpsState.lat + Math.cos(headRad) * (COVERAGE_CELL_FT * 0.5) / 364000;
+      const aLon    = gpsState.lon + Math.sin(headRad) * (COVERAGE_CELL_FT * 0.5) / (364000 * cosLat);
+      const half    = (sections.length - 1) / 2;
+
+      let changed = false;
+      for (let i = 0; i < sections.length; i++) {
+        const sec = sections[i];
+        if (sec.manual_override) continue;
+
+        const off     = (i - half) * settings.section_width_ft;
+        const dLat    = Math.cos(perp) * off / 364000;
+        const dLon    = Math.sin(perp) * off / (364000 * cosLat);
+        const covered = jobState.coverage_cells.has(cellKey(aLat + dLat, aLon + dLon, cosLat));
+
+        if (covered !== sec.asc_covered) {
+          sections[i] = { ...sec, asc_covered: covered, active: !covered };
+          changed = true;
+        }
+      }
+      if (changed) renderSections();
+      return changed;
+    }
+
+    // Mark every section cell at the current position as covered.
+    // Called AFTER runASCCheck so the current pass doesn't immediately self-close.
+    function markSwathCoverage() {
+      if (!jobState.active) return;
+      if (gpsState.speed_mph < settings.min_operating_speed_mph) return;
+
+      const cosLat = Math.cos(gpsState.lat * Math.PI / 180);
+      const perp   = (gpsState.heading_deg + 90) * Math.PI / 180;
+      const half   = (sections.length - 1) / 2;
+
+      for (let i = 0; i < sections.length; i++) {
+        const off  = (i - half) * settings.section_width_ft;
+        const dLat = Math.cos(perp) * off / 364000;
+        const dLon = Math.sin(perp) * off / (364000 * cosLat);
+        jobState.coverage_cells.add(cellKey(gpsState.lat + dLat, gpsState.lon + dLon, cosLat));
+      }
+    }
+
+    // ── Job Storage ───────────────────────────────────────────────────────
+
+    const JOBS_STORAGE_KEY = 'spreader_jobs';
+
+    function loadJobs() {
+      try { return JSON.parse(localStorage.getItem(JOBS_STORAGE_KEY) || '[]'); }
+      catch { return []; }
+    }
+
+    function persistJob(fieldName) {
+      const lbs   = jobState.total_applied_lbs;
+      const acres = jobState.total_acres;
+      const job   = {
+        id:                jobState.start_time,
+        field_name:        fieldName || 'Unnamed Field',
+        start_time:        jobState.start_time,
+        end_time:          Date.now(),
+        total_applied_lbs: Math.round(lbs),
+        total_acres:       parseFloat(acres.toFixed(2)),
+        avg_rate_lbs_acre: acres > 0 ? Math.round(lbs / acres) : 0,
+        gps_track:         jobState.gps_track,
+      };
+      const jobs = loadJobs();
+      jobs.unshift(job);
+      try { localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(jobs)); }
+      catch (e) { console.debug('[JOB] localStorage full:', e.message); }
+    }
+
+    function showJobSummary() {
+      const lbs     = jobState.total_applied_lbs;
+      const acres   = jobState.total_acres;
+      const elapsed = Math.floor((Date.now() - jobState.start_time) / 1000);
+      const h = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+      const m = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+
+      document.getElementById('summary-lbs').textContent   = Math.round(lbs).toLocaleString() + ' lbs';
+      document.getElementById('summary-tons').textContent  = (lbs / 2000).toFixed(1) + ' tons';
+      document.getElementById('summary-acres').textContent = acres.toFixed(1) + ' ac';
+      document.getElementById('summary-rate').textContent  = (acres > 0 ? Math.round(lbs / acres) : 0).toLocaleString() + ' lbs/ac';
+      document.getElementById('summary-time').textContent  = `${h}:${m}`;
+      document.getElementById('summary-field-name').value  = '';
+      document.getElementById('job-summary-overlay').style.display = '';
+    }
+
+    function saveAndCloseJob() {
+      const name = document.getElementById('summary-field-name').value.trim();
+      persistJob(name);
+      document.getElementById('job-summary-overlay').style.display = 'none';
+      updateJobDisplay();
+    }
+
+    function discardJob() {
+      document.getElementById('job-summary-overlay').style.display = 'none';
+    }
+
+    // ── Settings Panel ────────────────────────────────────────────────────
+
+    function openSettings() {
+      document.getElementById('set-target-rate').value  = settings.target_rate_lbs_per_acre;
+      document.getElementById('set-spread-width').value = settings.spread_width_ft;
+      document.getElementById('set-section-count').value = settings.section_count;
+      document.getElementById('set-section-width').value = settings.section_width_ft;
+      document.getElementById('set-overlap').value      = Math.round(settings.asc_overlap_threshold * 100);
+      document.getElementById('set-min-speed').value    = settings.min_operating_speed_mph;
+      document.getElementById('settings-panel').style.display = '';
+    }
+
+    function closeSettings() {
+      document.getElementById('settings-panel').style.display = 'none';
+    }
+
+    function applySettings() {
+      const num = (id) => parseFloat(document.getElementById(id).value);
+      const int = (id) => parseInt(document.getElementById(id).value);
+
+      const tr = num('set-target-rate');
+      const sw = num('set-spread-width');
+      const sc = int('set-section-count');
+      const sw2 = num('set-section-width');
+      const ov = num('set-overlap') / 100;
+      const ms = num('set-min-speed');
+
+      if (!isNaN(tr) && tr >= 0)    { settings.target_rate_lbs_per_acre = tr; document.getElementById('input-target-rate').value = tr; }
+      if (!isNaN(sw) && sw > 0)     settings.spread_width_ft           = sw;
+      if (!isNaN(sc) && sc >= 1)    { settings.section_count = sc; rebuildSections(); }
+      if (!isNaN(sw2) && sw2 > 0)   settings.section_width_ft          = sw2;
+      if (!isNaN(ov) && ov >= 0 && ov <= 1) settings.asc_overlap_threshold = ov;
+      if (!isNaN(ms) && ms >= 0)    settings.min_operating_speed_mph   = ms;
+    }
+
+    function rebuildSections() {
+      sections = Array.from({ length: settings.section_count }, (_, i) => ({
+        index: i, active: true, manual_override: false, asc_covered: false,
+      }));
+      renderSections();
+    }
+
+    // ── Job History Panel ─────────────────────────────────────────────────
+
+    function openHistory() {
+      renderHistoryList();
+      document.getElementById('history-panel').style.display = '';
+    }
+
+    function closeHistory() {
+      document.getElementById('history-panel').style.display = 'none';
+    }
+
+    function renderHistoryList() {
+      const jobs = loadJobs();
+      const list = document.getElementById('history-list');
+      if (jobs.length === 0) {
+        list.innerHTML = '<div class="history-empty">No saved jobs yet.<br>Complete a job to see it here.</div>';
+        return;
+      }
+      list.innerHTML = jobs.map(j => {
+        const d       = new Date(j.start_time);
+        const dateStr = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const timeStr = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+        return `<div class="history-item">
+          <div class="history-date">${dateStr} · ${timeStr}</div>
+          <div class="history-field">${j.field_name}</div>
+          <div class="history-stats">${j.total_applied_lbs.toLocaleString()} lbs · ${j.total_acres} ac · ${j.avg_rate_lbs_acre.toLocaleString()} lbs/ac</div>
+        </div>`;
+      }).join('');
+    }
+
+    function exportAllJobs() {
+      const jobs = loadJobs();
+      if (jobs.length === 0) { alert('No jobs to export.'); return; }
+      const blob = new Blob([JSON.stringify(jobs, null, 2)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `spreader-jobs-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
     }
 
     // ── Simulation Engine ─────────────────────────────────────────────────
@@ -1320,6 +1683,8 @@
       const btn = document.getElementById('btn-job');
       btn.textContent = 'START JOB';
       btn.className = 'btn btn-start';
+
+      showJobSummary();
     }
 
     // ── Tare ──────────────────────────────────────────────────────────────
