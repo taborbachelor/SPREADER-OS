@@ -485,6 +485,15 @@
     const GPS_BAUD_RATE             = 19200;
     const SCALE_BAUD_RATE           = 9600;
 
+    // Simulation
+    const SIM_START_LAT        = 41.8500;   // central Nebraska farm country
+    const SIM_START_LON        = -98.3500;
+    const SIM_INITIAL_WEIGHT   = 20000;     // lbs — full spreader load
+    const SIM_SPEED_MPH        = 5.0;       // target field speed
+    const SIM_PASS_LENGTH_FT   = 660;       // 1/8 mile per pass
+    const SIM_TICK_MS          = 1000;      // simulation fires at 1 Hz
+    const SIM_WEIGHT_NOISE_LBS = 10;        // ±10 lb noise on raw reading
+
     // ── State ─────────────────────────────────────────────────────────────
     let gpsState = {
       connected:   false,
@@ -540,6 +549,168 @@
       min_operating_speed_mph:  DEFAULT_MIN_SPEED_MPH,
       target_rate_lbs_per_acre: 500,
     };
+
+    // ── Weight Processing ─────────────────────────────────────────────────
+
+    // Push one raw reading through the 5-sample rolling buffer.
+    // Returns the new smoothed weight (net of tare).
+    function pushWeightSample(rawLbs) {
+      const net = rawLbs - scaleState.tare_offset;
+      scaleState.weight_buffer.push(net);
+      if (scaleState.weight_buffer.length > WEIGHT_BUFFER_SIZE) {
+        scaleState.weight_buffer.shift();
+      }
+      const sum = scaleState.weight_buffer.reduce((a, b) => a + b, 0);
+      scaleState.weight_lbs = sum / scaleState.weight_buffer.length;
+      return scaleState.weight_lbs;
+    }
+
+    // Tracks smoothed weight one second ago to calculate delta.
+    let _prevSmoothed = null;
+    let _prevSmoothedTime = null;
+
+    function updateDeltaWeight() {
+      const now = Date.now();
+      if (_prevSmoothed !== null && _prevSmoothedTime !== null) {
+        const dt = (now - _prevSmoothedTime) / 1000;
+        if (dt > 0 && dt <= 5) {
+          const delta = (_prevSmoothed - scaleState.weight_lbs) / dt;
+          calcState.delta_weight_per_sec = Math.max(0, delta);  // negative = loading, ignore
+        }
+      }
+      _prevSmoothed = scaleState.weight_lbs;
+      _prevSmoothedTime = now;
+    }
+
+    // ── Rate Calculation ──────────────────────────────────────────────────
+
+    function calculateRate() {
+      if (gpsState.speed_mph < settings.min_operating_speed_mph) return 0;  // stopped
+      if (calcState.delta_weight_per_sec <= 0) return 0;                    // not spreading
+      if (calcState.active_section_count === 0) return 0;                   // all sections closed
+      return (calcState.delta_weight_per_sec * SQ_FT_PER_ACRE) /
+             (gpsState.speed_mph * MPH_TO_FT_PER_SEC * calcState.effective_width_ft);
+    }
+
+    // Recalculate all derived values and refresh every display.
+    function recalculate() {
+      calcState.active_section_count = sections.filter(s => s.active).length;
+      calcState.effective_width_ft   = calcState.active_section_count * settings.section_width_ft;
+      calcState.rate_lbs_per_acre    = calculateRate();
+
+      if (jobState.active && gpsState.speed_mph >= settings.min_operating_speed_mph) {
+        // Weight applied = starting weight minus current weight
+        jobState.total_applied_lbs = Math.max(0, jobState.start_weight - scaleState.weight_lbs);
+        // Acres covered this second = (speed × width) / sq_ft_per_acre
+        jobState.total_acres +=
+          (gpsState.speed_mph * MPH_TO_FT_PER_SEC * calcState.effective_width_ft) / SQ_FT_PER_ACRE;
+        // Record GPS track point
+        jobState.gps_track.push({ lat: gpsState.lat, lon: gpsState.lon, ts: Date.now() });
+      }
+
+      updateStatusBar();
+      updateMetricsDisplay();
+      updateJobDisplay();
+    }
+
+    // ── Simulation Engine ─────────────────────────────────────────────────
+
+    let simState = {
+      lat:             SIM_START_LAT,
+      lon:             SIM_START_LON,
+      speed_mph:       SIM_SPEED_MPH,
+      heading_deg:     0,            // start heading north
+      raw_weight:      SIM_INITIAL_WEIGHT,
+      pass_dist_ft:    0,
+      pass_count:      0,
+      interval_id:     null,
+    };
+
+    function startSimulation() {
+      simState.lat          = SIM_START_LAT;
+      simState.lon          = SIM_START_LON;
+      simState.speed_mph    = SIM_SPEED_MPH;
+      simState.heading_deg  = 0;
+      simState.raw_weight   = SIM_INITIAL_WEIGHT;
+      simState.pass_dist_ft = 0;
+      simState.pass_count   = 0;
+
+      gpsState.simulated   = true;
+      scaleState.simulated = true;
+
+      simState.interval_id = setInterval(simTick, SIM_TICK_MS);
+      simTick();  // fire immediately so display isn't blank for first second
+      console.debug('[SIM] Simulation started');
+    }
+
+    function stopSimulation() {
+      if (simState.interval_id !== null) {
+        clearInterval(simState.interval_id);
+        simState.interval_id = null;
+      }
+      gpsState.simulated   = false;
+      scaleState.simulated = false;
+      console.debug('[SIM] Simulation stopped');
+    }
+
+    function simTick() {
+      const speedFtPerSec = simState.speed_mph * MPH_TO_FT_PER_SEC;
+
+      // Move position along current heading
+      const rad = simState.heading_deg * Math.PI / 180;
+      const LAT_PER_FT = 1 / 364000;
+      const LON_PER_FT = 1 / (364000 * Math.cos(simState.lat * Math.PI / 180));
+      simState.lat         += Math.cos(rad) * speedFtPerSec * LAT_PER_FT;
+      simState.lon         += Math.sin(rad) * speedFtPerSec * LON_PER_FT;
+      simState.pass_dist_ft += speedFtPerSec;
+
+      // Turn at end of each pass, step over by one spread width
+      if (simState.pass_dist_ft >= SIM_PASS_LENGTH_FT) {
+        simState.pass_dist_ft = 0;
+        simState.pass_count++;
+        simState.heading_deg = simState.heading_deg === 0 ? 180 : 0;
+        simState.lon += DEFAULT_SPREAD_WIDTH_FT * LON_PER_FT;  // step east each pass
+        console.debug(`[SIM] Pass ${simState.pass_count}, now heading ${simState.heading_deg}°`);
+      }
+
+      // Vary speed naturally (±0.5 mph)
+      simState.speed_mph = SIM_SPEED_MPH + (Math.random() - 0.5) * 1.0;
+      simState.speed_mph = Math.max(4.0, Math.min(6.0, simState.speed_mph));
+
+      // Update GPS state
+      gpsState.lat         = simState.lat;
+      gpsState.lon         = simState.lon;
+      gpsState.speed_mph   = simState.speed_mph;
+      gpsState.heading_deg = simState.heading_deg;
+      gpsState.fix_quality = 4;   // RTK fixed
+      gpsState.satellites  = 8 + Math.floor(Math.random() * 3);  // 8–10 sats
+      gpsState.last_update = Date.now();
+
+      // Decrease weight by the expected spread rate + noise
+      const width      = calcState.effective_width_ft || DEFAULT_SPREAD_WIDTH_FT;
+      const lbsPerSec  = (settings.target_rate_lbs_per_acre * simState.speed_mph * MPH_TO_FT_PER_SEC * width) / SQ_FT_PER_ACRE;
+      const noise      = (Math.random() - 0.5) * (SIM_WEIGHT_NOISE_LBS * 2);
+      simState.raw_weight = Math.max(0, simState.raw_weight - lbsPerSec + noise);
+
+      // Push through smoothing buffer and update delta
+      pushWeightSample(simState.raw_weight);
+      updateDeltaWeight();
+      scaleState.last_update = Date.now();
+
+      recalculate();
+    }
+
+    // Auto-start simulation when Web Serial is unavailable.
+    // When real ports are connected (Step 6), simulation stops for that input.
+    function initHardwareOrSim() {
+      if (!navigator.serial) {
+        console.debug('[SIM] Web Serial API not available — simulation mode');
+        startSimulation();
+        return;
+      }
+      // Web Serial is available: start simulation as default until ports are connected
+      startSimulation();
+    }
 
     // ── Section Bar ───────────────────────────────────────────────────────
     function renderSections() {
@@ -781,12 +952,10 @@
     // ── Init ──────────────────────────────────────────────────────────────
     renderSections();
     updateClock();
-    updateStatusBar();
-    updateMetricsDisplay();
-    updateJobDisplay();
     setInterval(updateClock, 1000);
     setInterval(updateJobTimer, 1000);
     requestAnimationFrame(resizeCanvas);
+    initHardwareOrSim();
   </script>
 </body>
 </html>
