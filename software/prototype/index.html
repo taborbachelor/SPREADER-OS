@@ -343,6 +343,40 @@
     }
     .toggle input:checked + .toggle-track { background: var(--green); border-color: var(--green); }
     .toggle input:checked + .toggle-track::before { transform: translateX(16px); background: #000; }
+
+    /* ── Rate Color States ────────────────────────────────────────────── */
+    .metric-block.rate-spreading .metric-value { color: var(--amber); }
+    .metric-block.rate-on-target .metric-value { color: var(--green); }
+    .metric-block.rate-over      .metric-value { color: var(--red);   }
+    .metric-block.rate-under     .metric-value { color: var(--amber); }
+
+    /* ── On-Target Indicator ─────────────────────────────────────────── */
+    .rate-status {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      margin-top: 2px;
+    }
+    .rate-status.ok    { color: var(--green); }
+    .rate-status.over  { color: var(--red);   }
+    .rate-status.under { color: var(--amber); }
+    .rate-status.idle  { color: var(--text-label); }
+
+    /* ── Connect Buttons ─────────────────────────────────────────────── */
+    .connect-btn {
+      background: none;
+      border: 1px solid var(--amber);
+      color: var(--amber);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      padding: 2px 7px;
+      border-radius: 3px;
+      cursor: pointer;
+      font-family: inherit;
+      margin-left: 4px;
+    }
+    .connect-btn:hover { background: var(--amber); color: #000; }
   </style>
 </head>
 <body>
@@ -353,10 +387,12 @@
       <div class="status-indicator">
         <div class="status-dot" id="gps-dot"></div>
         <span id="gps-status-text" style="color:var(--text-secondary)">GPS · No Fix</span>
+        <button class="connect-btn" id="btn-connect-gps" onclick="connectGPS()">CONNECT</button>
       </div>
       <div class="status-indicator">
         <div class="status-dot" id="scale-dot"></div>
         <span id="scale-status-text" style="color:var(--text-secondary)">Scale · Disconnected</span>
+        <button class="connect-btn" id="btn-connect-scale" onclick="connectScale()">CONNECT</button>
       </div>
     </div>
 
@@ -419,6 +455,7 @@
             <input class="rate-target-input" id="input-target-rate" type="number" value="500" min="0" max="9999">
             <span class="rate-unit">lbs/ac</span>
           </div>
+          <div class="rate-status idle" id="rate-status-label">—</div>
         </div>
 
         <div>
@@ -613,6 +650,139 @@
       updateJobDisplay();
     }
 
+    // ── NMEA Parser ───────────────────────────────────────────────────────
+
+    // Convert ddmm.mmmm + hemisphere to decimal degrees.
+    function nmeaToDeg(raw, hemi) {
+      const v = parseFloat(raw);
+      if (isNaN(v)) return null;
+      const deg = Math.floor(v / 100);
+      const min = v - deg * 100;
+      const dd  = deg + min / 60;
+      return (hemi === 'S' || hemi === 'W') ? -dd : dd;
+    }
+
+    // XOR checksum check — returns true if valid or no checksum present.
+    function checksumOk(sentence) {
+      const star = sentence.indexOf('*');
+      if (star === -1) return true;
+      const body = sentence.slice(1, star);
+      const expected = sentence.slice(star + 1, star + 3).toUpperCase();
+      const calc = body.split('').reduce((a, c) => a ^ c.charCodeAt(0), 0);
+      return calc.toString(16).toUpperCase().padStart(2, '0') === expected;
+    }
+
+    function parseGPRMC(f) {
+      // $GPRMC,time,status,lat,N/S,lon,E/W,knots,course,date,...
+      if (f[2] !== 'A') return null;  // void/invalid fix
+      const lat = nmeaToDeg(f[3], f[4]);
+      const lon = nmeaToDeg(f[5], f[6]);
+      const spd = parseFloat(f[7]);
+      const crs = parseFloat(f[8]);
+      if (lat === null || lon === null || isNaN(spd)) return null;
+      return { lat, lon, speed_mph: spd * KNOTS_TO_MPH, heading_deg: isNaN(crs) ? gpsState.heading_deg : crs };
+    }
+
+    function parseGPGGA(f) {
+      // $GPGGA,time,lat,N/S,lon,E/W,fix,sats,...
+      const fix  = parseInt(f[6]);
+      const sats = parseInt(f[7]);
+      const lat  = nmeaToDeg(f[2], f[3]);
+      const lon  = nmeaToDeg(f[4], f[5]);
+      if (isNaN(fix)) return null;
+      return {
+        lat: lat ?? gpsState.lat,
+        lon: lon ?? gpsState.lon,
+        fix_quality: fix,
+        satellites:  isNaN(sats) ? 0 : sats,
+      };
+    }
+
+    function parseGPVTG(f) {
+      // $GPVTG,course_T,T,course_M,M,knots,N,km/h,K,...
+      const crs   = parseFloat(f[1]);
+      const knots = parseFloat(f[5]);
+      const kmh   = parseFloat(f[7]);
+      const speed_mph = !isNaN(knots) ? knots * KNOTS_TO_MPH
+                      : !isNaN(kmh)   ? kmh   * KMH_TO_MPH
+                      : null;
+      if (speed_mph === null) return null;
+      return { speed_mph, heading_deg: isNaN(crs) ? gpsState.heading_deg : crs };
+    }
+
+    // Entry point for any complete NMEA sentence (real or injected for testing).
+    function processNMEA(sentence) {
+      sentence = sentence.trim();
+      if (!sentence.startsWith('$')) return;
+      if (!checksumOk(sentence)) { console.debug('[GPS] bad checksum:', sentence); return; }
+
+      const fields = sentence.split(',');
+      const type   = fields[0].slice(1);  // strip $, e.g. "GPRMC"
+
+      let update = null;
+      if      (type === 'GPRMC' || type === 'GNRMC') update = parseGPRMC(fields);
+      else if (type === 'GPGGA' || type === 'GNGGA') update = parseGPGGA(fields);
+      else if (type === 'GPVTG' || type === 'GNVTG') update = parseGPVTG(fields);
+      if (!update) return;
+
+      Object.assign(gpsState, update, { connected: true, simulated: false, last_update: Date.now() });
+      updateDeltaWeight();
+      recalculate();
+    }
+
+    // ── Web Serial — GPS ──────────────────────────────────────────────────
+
+    let gpsPort   = null;
+    let gpsReader = null;
+
+    async function connectGPS() {
+      if (!navigator.serial) { alert('Web Serial requires Chrome or Edge.'); return; }
+      try {
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: GPS_BAUD_RATE, dataBits: 8, stopBits: 1, parity: 'none' });
+        gpsPort = port;
+        gpsState.connected = true;
+        gpsState.simulated = false;
+        updateStatusBar();
+        _readGPSPort(port);
+        console.debug('[GPS] Port opened at', GPS_BAUD_RATE, 'baud');
+      } catch (err) {
+        console.debug('[GPS] Connect cancelled:', err.message);
+      }
+    }
+
+    async function _readGPSPort(port) {
+      const decoder = new TextDecoderStream();
+      port.readable.pipeTo(decoder.writable);
+      gpsReader = decoder.readable.getReader();
+      let buf = '';
+      try {
+        for (;;) {
+          const { value, done } = await gpsReader.read();
+          if (done) break;
+          buf += value;
+          let nl;
+          while ((nl = buf.indexOf('\n')) !== -1) {
+            processNMEA(buf.slice(0, nl));
+            buf = buf.slice(nl + 1);
+          }
+        }
+      } catch (err) {
+        console.debug('[GPS] Read error:', err.message);
+      } finally {
+        gpsState.connected = false;
+        gpsState.simulated = true;   // fall back to simulation
+        gpsReader = null;
+        updateStatusBar();
+        console.debug('[GPS] Disconnected — falling back to GPS simulation');
+      }
+    }
+
+    // Stub for Step 7 (scale serial — not yet implemented).
+    function connectScale() {
+      alert('Scale serial connection coming in Step 7.');
+    }
+
     // ── Simulation Engine ─────────────────────────────────────────────────
 
     let simState = {
@@ -797,76 +967,111 @@
 
     // ── Status Bar Updates ────────────────────────────────────────────────
     function updateStatusBar() {
-      const gpsDot  = document.getElementById('gps-dot');
-      const gpsText = document.getElementById('gps-status-text');
+      const gpsDot    = document.getElementById('gps-dot');
+      const gpsText   = document.getElementById('gps-status-text');
       const scaleDot  = document.getElementById('scale-dot');
       const scaleText = document.getElementById('scale-status-text');
       const simBadge  = document.getElementById('sim-badge');
+      const btnGPS    = document.getElementById('btn-connect-gps');
+      const btnScale  = document.getElementById('btn-connect-scale');
 
-      const anySimulated = gpsState.simulated || scaleState.simulated;
-      simBadge.style.display = anySimulated ? '' : 'none';
+      simBadge.style.display = (gpsState.simulated || scaleState.simulated) ? '' : 'none';
 
       if (gpsState.connected || gpsState.simulated) {
-        const fixLabels = { 0: 'No Fix', 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'Float' };
-        const fix = fixLabels[gpsState.fix_quality] || 'GPS';
+        const fixLabel = { 0: 'No Fix', 1: 'GPS', 2: 'DGPS', 4: 'RTK', 5: 'Float' };
+        const fix = gpsState.simulated ? 'SIM' : (fixLabel[gpsState.fix_quality] || 'GPS');
         gpsDot.className = 'status-dot live';
         gpsText.textContent = `GPS · ${gpsState.satellites} sats · ${fix}`;
         gpsText.style.color = 'var(--text-value)';
+        btnGPS.style.display = 'none';
       } else {
         gpsDot.className = 'status-dot err';
         gpsText.textContent = 'GPS · Disconnected';
         gpsText.style.color = 'var(--red)';
+        btnGPS.style.display = '';
       }
 
       if (scaleState.connected || scaleState.simulated) {
         scaleDot.className = 'status-dot live';
-        scaleText.textContent = 'Scale · Connected';
+        scaleText.textContent = scaleState.simulated ? 'Scale · SIM' : 'Scale · Connected';
         scaleText.style.color = 'var(--text-value)';
+        btnScale.style.display = 'none';
       } else {
         scaleDot.className = 'status-dot';
         scaleText.textContent = 'Scale · Disconnected';
         scaleText.style.color = 'var(--text-secondary)';
+        btnScale.style.display = '';
       }
     }
 
     // ── Display Updates ───────────────────────────────────────────────────
     function updateMetricsDisplay() {
-      const weightBlock = document.getElementById('metric-weight');
-      const rateBlock   = document.getElementById('metric-rate');
-      const speedBlock  = document.getElementById('metric-speed');
-      const loadBlock   = document.getElementById('metric-load');
+      const isScale  = scaleState.connected || scaleState.simulated;
+      const isGPS    = gpsState.connected   || gpsState.simulated;
+      const isSpreading = isScale && isGPS && calcState.rate_lbs_per_acre > 0;
 
-      const isLive = scaleState.connected || scaleState.simulated;
-      const isGpsLive = gpsState.connected || gpsState.simulated;
-
-      weightBlock.classList.toggle('is-live', isLive);
-      rateBlock.classList.toggle('is-live', isLive && isGpsLive && jobState.active);
-
+      // Weight — amber when live data is updating
+      document.getElementById('metric-weight').classList.toggle('is-live', isScale);
       const weight = scaleState.weight_lbs;
-      document.getElementById('display-weight').innerHTML =
-        isLive ? `${weight.toLocaleString('en-US', { maximumFractionDigits: 0 })}<span class="metric-unit">lbs</span>` :
-                 `—<span class="metric-unit">lbs</span>`;
+      document.getElementById('display-weight').innerHTML = isScale
+        ? `${weight.toLocaleString('en-US', { maximumFractionDigits: 0 })}<span class="metric-unit">lbs</span>`
+        : `—<span class="metric-unit">lbs</span>`;
 
-      const rate = calcState.rate_lbs_per_acre;
-      document.getElementById('display-rate').innerHTML =
-        jobState.active ? `${Math.round(rate).toLocaleString()}<span class="metric-unit">lbs/ac</span>` :
-                          `—<span class="metric-unit">lbs/ac</span>`;
+      // Rate — color indicates on-target status; shows whenever spreading (job or not)
+      const rateBlock = document.getElementById('metric-rate');
+      rateBlock.classList.remove('rate-spreading', 'rate-on-target', 'rate-over', 'rate-under');
+      const rate   = calcState.rate_lbs_per_acre;
+      const target = settings.target_rate_lbs_per_acre;
+      if (isSpreading && jobState.active && target > 0) {
+        const pct = (rate - target) / target;
+        if      (Math.abs(pct) <= 0.10) rateBlock.classList.add('rate-on-target');
+        else if (pct > 0.10)            rateBlock.classList.add('rate-over');
+        else                            rateBlock.classList.add('rate-under');
+      } else if (isSpreading) {
+        rateBlock.classList.add('rate-spreading');
+      }
+      document.getElementById('display-rate').innerHTML = isSpreading
+        ? `${Math.round(rate).toLocaleString()}<span class="metric-unit">lbs/ac</span>`
+        : `—<span class="metric-unit">lbs/ac</span>`;
 
-      const speed = gpsState.speed_mph;
-      document.getElementById('display-speed').innerHTML =
-        isGpsLive ? `${speed.toFixed(1)}<span class="metric-unit">mph</span>` :
-                    `—<span class="metric-unit">mph</span>`;
+      // Speed
+      document.getElementById('display-speed').innerHTML = isGPS
+        ? `${gpsState.speed_mph.toFixed(1)}<span class="metric-unit">mph</span>`
+        : `—<span class="metric-unit">mph</span>`;
 
+      // Load remaining
       const tonsLeft = weight / 2000;
-      document.getElementById('display-load').innerHTML =
-        isLive ? `${tonsLeft.toFixed(1)}<span class="metric-unit">tons</span>` :
-                 `—<span class="metric-unit">tons</span>`;
+      document.getElementById('display-load').innerHTML = isScale
+        ? `${tonsLeft.toFixed(1)}<span class="metric-unit">tons</span>`
+        : `—<span class="metric-unit">tons</span>`;
     }
 
     function updateJobDisplay() {
-      const rate = calcState.rate_lbs_per_acre;
+      const rate   = calcState.rate_lbs_per_acre;
+      const target = settings.target_rate_lbs_per_acre;
+
       document.getElementById('display-rate-actual').textContent =
         jobState.active ? Math.round(rate).toLocaleString() : '—';
+
+      // On-target status label
+      const statusEl = document.getElementById('rate-status-label');
+      if (jobState.active && rate > 0 && target > 0) {
+        const pct = (rate - target) / target;
+        const absPct = Math.round(Math.abs(pct) * 100);
+        if (Math.abs(pct) <= 0.10) {
+          statusEl.textContent = 'ON TARGET';
+          statusEl.className = 'rate-status ok';
+        } else if (pct > 0.10) {
+          statusEl.textContent = `HIGH +${absPct}%`;
+          statusEl.className = 'rate-status over';
+        } else {
+          statusEl.textContent = `LOW  −${absPct}%`;
+          statusEl.className = 'rate-status under';
+        }
+      } else {
+        statusEl.textContent = jobState.active ? 'WAITING FOR DATA' : '—';
+        statusEl.className = 'rate-status idle';
+      }
 
       const lbs   = jobState.total_applied_lbs;
       const acres = jobState.total_acres;
