@@ -50,8 +50,14 @@ HX711 Pin → Pi GPIO (BCM numbering)
 ────────────────────────────────────
 VCC       → 3.3V (Pin 1)
 GND       → GND  (Pin 6)
-DT        → GPIO 5  (Pin 29)  [second HX711: GPIO 6, Pin 31]
-SCK       → GPIO 6  (Pin 31)  [second HX711: GPIO 13, Pin 33]
+
+First HX711:
+DT        → GPIO 5  (Pin 29)
+SCK       → GPIO 6  (Pin 31)
+
+Second HX711:
+DT        → GPIO 13 (Pin 33)
+SCK       → GPIO 19 (Pin 35)
 ```
 
 Use the `hx711` Python library for reading.
