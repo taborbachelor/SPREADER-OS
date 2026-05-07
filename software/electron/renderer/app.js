@@ -33,6 +33,12 @@ const SIM_TICK_MS               = 1000;
 const SIM_WEIGHT_NOISE_LBS      = 10;
 const JOBS_STORAGE_KEY          = 'spreader_jobs_v3';
 
+// Rate controller
+const RC_KP               = 0.15;  // proportional gain: 15% speed adjustment per 100% rate error
+const RC_DEADBAND         = 0.05;  // ignore errors < 5% of target to prevent hunting
+const RC_MAX_STEP_PCT     = 5;     // max floor speed change per recalculate cycle
+const FLOOR_SPEED_DEFAULT = 50;    // % floor speed at job start
+
 // ── State ─────────────────────────────────────────────────────────────────────
 
 let gpsState = {
@@ -67,6 +73,8 @@ let settings = {
   asc_enabled:               true,
   asc_overlap_threshold:     0.5,
   min_operating_speed_mph:   DEFAULT_MIN_SPEED_MPH,
+  rc_floor_min_pct:          10,   // floor belt won't drop below this %
+  rc_floor_max_pct:          90,   // floor belt won't exceed this %
   sync_endpoint:             '',   // POST URL — empty disables sync
   sync_api_key:              '',   // Bearer token — optional
 };
@@ -85,6 +93,8 @@ let _prevSmoothed     = null;
 let _prevSmoothedTime = null;
 let _portPickerTarget = null;   // 'gps' | 'scale'
 let _selectedPortPath = null;
+let _floorSpeedPct    = FLOOR_SPEED_DEFAULT;
+let _rcEnabled        = true;
 
 // ── Simulation ────────────────────────────────────────────────────────────────
 
@@ -161,6 +171,32 @@ function pushWeight(rawLbs) {
   scaleState.last_update = now;
 }
 
+// ── Rate controller (proportional) ───────────────────────────────────────────
+
+// Adjusts floor belt speed each recalculate cycle to track target application rate.
+// Uses a simple P-controller with deadband and per-cycle step limit.
+function runRateController() {
+  if (!_rcEnabled || !jobState.active) return;
+  if (gpsState.speed_mph < settings.min_operating_speed_mph) return;
+  if (calcState.active_section_count === 0) return;
+
+  const target = settings.target_rate_lbs_per_acre;
+  const actual = calcState.rate_lbs_per_acre;
+  if (target <= 0 || actual <= 0) return;
+
+  const error = (target - actual) / target;      // +1.0 = way under target, -1.0 = way over
+  if (Math.abs(error) < RC_DEADBAND) return;     // within tolerance, don't hunt
+
+  const step = Math.max(-RC_MAX_STEP_PCT, Math.min(RC_MAX_STEP_PCT, RC_KP * error * 100));
+  _floorSpeedPct = Math.max(
+    settings.rc_floor_min_pct,
+    Math.min(settings.rc_floor_max_pct, _floorSpeedPct + step)
+  );
+
+  window.spreaderAPI.setFloorSpeed(_floorSpeedPct).catch(() => {});
+  updateFloorSpeedDisplay();
+}
+
 // ── Rate / ASC recalculate ────────────────────────────────────────────────────
 
 function recalculate() {
@@ -201,6 +237,8 @@ function recalculate() {
       minSpeedMph: settings.min_operating_speed_mph,
     });
   }
+
+  runRateController();
 
   updateStatusBar();
   updateMetricsDisplay();
@@ -399,6 +437,9 @@ function startJob() {
   jobState.gps_track         = [];
   jobState.coverage_cells    = new Set();
   mapPoints                  = [];
+  _floorSpeedPct             = FLOOR_SPEED_DEFAULT;
+  window.spreaderAPI.setFloorSpeed(_floorSpeedPct).catch(() => {});
+  updateFloorSpeedDisplay();
   document.getElementById('btn-job').textContent = 'STOP JOB';
   document.getElementById('btn-job').style.background = 'var(--red)';
 }
@@ -533,6 +574,8 @@ function openSettings() {
   document.getElementById('set-section-width').value  = settings.section_width_ft;
   document.getElementById('set-asc-threshold').value  = Math.round(settings.asc_overlap_threshold * 100);
   document.getElementById('set-min-speed').value      = settings.min_operating_speed_mph;
+  document.getElementById('set-rc-floor-min').value   = settings.rc_floor_min_pct;
+  document.getElementById('set-rc-floor-max').value   = settings.rc_floor_max_pct;
   document.getElementById('set-sync-endpoint').value  = settings.sync_endpoint;
   document.getElementById('set-sync-key').value       = settings.sync_api_key;
   document.getElementById('settings-panel').style.display = '';
@@ -547,6 +590,8 @@ function applySettings() {
   settings.section_width_ft          = parseFloat(document.getElementById('set-section-width').value) || 5;
   settings.asc_overlap_threshold     = (parseFloat(document.getElementById('set-asc-threshold').value) || 50) / 100;
   settings.min_operating_speed_mph   = parseFloat(document.getElementById('set-min-speed').value)     || 0.3;
+  settings.rc_floor_min_pct          = parseFloat(document.getElementById('set-rc-floor-min').value)  || 10;
+  settings.rc_floor_max_pct          = parseFloat(document.getElementById('set-rc-floor-max').value)  || 90;
   settings.sync_endpoint             = document.getElementById('set-sync-endpoint').value.trim();
   settings.sync_api_key              = document.getElementById('set-sync-key').value.trim();
   updateSyncIndicator();
@@ -675,6 +720,12 @@ function updateJobDisplay() {
   document.getElementById('display-avg-rate').innerHTML = `${acres > 0 ? Math.round(lbs / acres).toLocaleString() : '—'}<span class="metric-unit">lb/ac</span>`;
 }
 
+function updateFloorSpeedDisplay() {
+  const el = document.getElementById('display-floor-speed');
+  if (!el) return;
+  el.textContent = jobState.active ? `${Math.round(_floorSpeedPct)}%` : '—';
+}
+
 function updateJobTimer() {
   if (!jobState.active || !jobState.start_time) return;
   const elapsed = Math.floor((Date.now() - jobState.start_time) / 1000);
@@ -793,6 +844,7 @@ Object.assign(window, {
   openSettings, closeSettings, applySettings,
   openHistory, closeHistory, exportAllJobs,
   toggleJob, saveAndCloseJob,
-  setFloorSpeed: pct => window.spreaderAPI.setFloorSpeed(pct),
+  setFloorSpeed:    pct     => window.spreaderAPI.setFloorSpeed(pct),
+  setRateControl:   enabled => { _rcEnabled = enabled; },
   loadPrescription, clearPrescription,
 });
