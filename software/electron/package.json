@@ -1,0 +1,61 @@
+{
+  "name": "spreader-os",
+  "version": "0.1.0",
+  "description": "Spreader OS — custom spreader control system for dry granular manure trailers",
+  "main": "main.js",
+  "author": "Tabor",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "build:win": "electron-builder --win --x64",
+    "build:dir": "electron-builder --win --x64 --dir"
+  },
+  "dependencies": {
+    "electron-updater": "^6.3.0",
+    "serialport": "^12.0.0",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "electron": "^31.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "build": {
+    "appId": "com.spreader.os",
+    "productName": "Spreader OS",
+    "copyright": "Copyright © 2025 Tabor",
+    "directories": {
+      "output": "dist",
+      "buildResources": "assets/build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "taborbachelor",
+      "repo": "spreader-project"
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/build/icon.ico",
+      "artifactName": "SpreaderOS-Setup-${version}.exe",
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spreader OS",
+      "installerIcon": "assets/build/icon.ico",
+      "uninstallerIcon": "assets/build/icon.ico"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "renderer/**/*",
+      "../shared/**/*",
+      "!**/*.map"
+    ],
+    "extraResources": [],
+    "asar": true
+  }
+}
