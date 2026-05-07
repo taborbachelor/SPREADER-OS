@@ -23,6 +23,11 @@
         <span id="scale-status-text" style="color:var(--text-secondary)">Scale · Disconnected</span>
         <button class="connect-btn" id="btn-connect-scale" onclick="openPortPicker('scale')">CONNECT</button>
       </div>
+      <div class="status-indicator">
+        <div class="status-dot" id="output-dot"></div>
+        <span id="output-status-text" style="color:var(--text-secondary)">Output · Disconnected</span>
+        <button class="connect-btn" id="btn-connect-output" onclick="openPortPicker('output')">CONNECT</button>
+      </div>
       <span class="sim-badge" id="sim-badge" style="display:none">SIM</span>
     </div>
     <div class="status-group">
