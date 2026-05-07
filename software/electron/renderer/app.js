@@ -170,7 +170,7 @@ function recalculate() {
     sectionWidthFt: settings.section_width_ft,
     ascEnabled: settings.asc_enabled, jobActive: jobState.active,
   });
-  if (changed) { sections = updated; renderSections(); }
+  if (changed) { sections = updated; renderSections(); sendSectionOutputs(); }
 
   if (jobState.active && gpsState.speed_mph >= settings.min_operating_speed_mph) {
     jobState.total_applied_lbs = Math.max(0, jobState.start_weight - scaleState.weight_lbs);
@@ -271,11 +271,10 @@ async function connectScale(portPath, baudRate) {
   }
 }
 
-window.spreaderAPI.onScaleLine(line => {
-  const match = line.match(/[-+]?\d+\.?\d*/);
-  if (!match) return;
-  const val = parseFloat(match[0]);
-  if (!isNaN(val) && val >= 0 && val <= 100000) { pushWeight(val); recalculate(); }
+// main process parses SL-2 format and sends the weight_lbs float directly
+window.spreaderAPI.onScaleWeight(weightLbs => {
+  pushWeight(weightLbs);
+  recalculate();
 });
 
 window.spreaderAPI.onScaleDisconnect(() => {
@@ -323,6 +322,21 @@ async function confirmPortConnect() {
   closePortPicker();
   if (_portPickerTarget === 'gps')   await connectGPS(_selectedPortPath, baud);
   if (_portPickerTarget === 'scale') await connectScale(_selectedPortPath, baud);
+  if (_portPickerTarget === 'output') {
+    await window.spreaderAPI.outputConnect(_selectedPortPath, baud);
+    _outputConnected = true;
+    updateStatusBar();
+    sendSectionOutputs();  // push current state immediately on connect
+  }
+}
+
+// ── Section output ────────────────────────────────────────────────────────────
+
+// Send current section states to the physical output port (if connected).
+// Called whenever section states change for any reason (ASC, manual, settings reset).
+function sendSectionOutputs() {
+  const states = sections.map(s => s.active);
+  window.spreaderAPI.setSections(states).catch(() => { /* output port may not be connected */ });
 }
 
 // ── Sections ──────────────────────────────────────────────────────────────────
@@ -337,6 +351,7 @@ function renderSections() {
     btn.onclick = () => {
       sections[i] = { ...sections[i], manual_override: !sections[i].manual_override, active: sections[i].manual_override };
       renderSections();
+      sendSectionOutputs();
     };
     container.appendChild(btn);
   });
@@ -480,14 +495,31 @@ function closeHistory() { document.getElementById('history-panel').style.display
 
 // ── Display updates ───────────────────────────────────────────────────────────
 
+let _outputConnected = false;
+
 function updateStatusBar() {
-  const gpsDot    = document.getElementById('gps-dot');
-  const gpsText   = document.getElementById('gps-status-text');
-  const scaleDot  = document.getElementById('scale-dot');
-  const scaleText = document.getElementById('scale-status-text');
-  const simBadge  = document.getElementById('sim-badge');
-  const btnGPS    = document.getElementById('btn-connect-gps');
-  const btnScale  = document.getElementById('btn-connect-scale');
+  const gpsDot     = document.getElementById('gps-dot');
+  const gpsText    = document.getElementById('gps-status-text');
+  const scaleDot   = document.getElementById('scale-dot');
+  const scaleText  = document.getElementById('scale-status-text');
+  const outputDot  = document.getElementById('output-dot');
+  const outputText = document.getElementById('output-status-text');
+  const simBadge   = document.getElementById('sim-badge');
+  const btnGPS     = document.getElementById('btn-connect-gps');
+  const btnScale   = document.getElementById('btn-connect-scale');
+  const btnOutput  = document.getElementById('btn-connect-output');
+
+  if (_outputConnected) {
+    outputDot.className      = 'status-dot ok';
+    outputText.textContent   = 'Output · Connected';
+    outputText.style.color   = 'var(--text-value)';
+    btnOutput.style.display  = 'none';
+  } else {
+    outputDot.className      = 'status-dot';
+    outputText.textContent   = 'Output · Disconnected';
+    outputText.style.color   = 'var(--text-secondary)';
+    btnOutput.style.display  = '';
+  }
 
   simBadge.style.display = (gpsState.simulated || scaleState.simulated) ? '' : 'none';
 
@@ -600,4 +632,5 @@ Object.assign(window, {
   openSettings, closeSettings, applySettings,
   openHistory, closeHistory, exportAllJobs,
   toggleJob, saveAndCloseJob,
+  setFloorSpeed: pct => window.spreaderAPI.setFloorSpeed(pct),
 });
