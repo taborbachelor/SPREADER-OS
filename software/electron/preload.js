@@ -23,10 +23,11 @@ contextBridge.exposeInMainWorld('spreaderAPI', {
   onScaleError:      cb => ipcRenderer.on('scale:error',       (_e, m) => cb(m)),
 
   // Section gate + floor belt output (USB relay / serial controller)
-  outputConnect:     (portPath, baudRate) => ipcRenderer.invoke('output:connect', { portPath, baudRate }),
-  outputDisconnect:  ()                   => ipcRenderer.invoke('output:disconnect'),
-  setSections:       (sections)           => ipcRenderer.invoke('output:setSections', { sections }),
-  setFloorSpeed:     (speedPct)           => ipcRenderer.invoke('output:setFloorSpeed', { speedPct }),
+  outputConnect:      (portPath, baudRate) => ipcRenderer.invoke('output:connect', { portPath, baudRate }),
+  outputDisconnect:   ()                   => ipcRenderer.invoke('output:disconnect'),
+  setSections:        (sections)           => ipcRenderer.invoke('output:setSections', { sections }),
+  setFloorSpeed:      (speedPct)           => ipcRenderer.invoke('output:setFloorSpeed', { speedPct }),
+  onOutputDisconnect: cb => ipcRenderer.on('output:disconnect', () => cb()),
 
   // Prescription map
   loadPrescription: () => ipcRenderer.invoke('prescription:load'),
