@@ -7,7 +7,9 @@ import { parseNMEA }                            from '../../shared/nmea-parser.j
 import { smoothWeight, calcDeltaWeight, calculateRate, SQ_FT_PER_ACRE, MPH_TO_FT_PER_SEC }
                                                 from '../../shared/liw-calc.js';
 import { runASCCheck, markSwathCoverage }       from '../../shared/asc-engine.js';
-import { drawCoverageMap }                      from '../../shared/coverage-map.js';
+import { drawCoverageMap, buildMapTransform }   from '../../shared/coverage-map.js';
+import { parsePrescription, getTargetRate, drawPrescriptionZones }
+                                                from '../../shared/prescription-map.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -70,6 +72,10 @@ let sections = Array.from({ length: DEFAULT_SECTION_COUNT }, (_, i) => ({
 }));
 
 let mapPoints = [];
+
+let prescriptionZones    = [];   // parsed from loaded GeoJSON
+let prescriptionFilename = null; // display name in status bar
+let prescriptionActive   = false; // true when auto-rate is engaged
 
 let _prevSmoothed     = null;
 let _prevSmoothedTime = null;
@@ -154,6 +160,12 @@ function pushWeight(rawLbs) {
 // ── Rate / ASC recalculate ────────────────────────────────────────────────────
 
 function recalculate() {
+  // Auto-adjust target rate from prescription map if active and GPS is live
+  if (prescriptionActive && prescriptionZones.length > 0 && (gpsState.connected || gpsState.simulated)) {
+    const zoneRate = getTargetRate(gpsState.lat, gpsState.lon, prescriptionZones);
+    if (zoneRate !== null) settings.target_rate_lbs_per_acre = zoneRate;
+  }
+
   calcState.active_section_count = sections.filter(s => s.active).length;
   calcState.effective_width_ft   = calcState.active_section_count * settings.section_width_ft;
   calcState.rate_lbs_per_acre    = calculateRate(
@@ -190,7 +202,7 @@ function recalculate() {
   updateMetricsDisplay();
   updateJobDisplay();
   const canvas = document.getElementById('coverage-canvas');
-  if (canvas) drawCoverageMap(canvas, { mapPoints, gpsState, sections, settings });
+  if (canvas) renderMap(canvas);
 }
 
 // ── GPS — real hardware via spreaderAPI ───────────────────────────────────────
@@ -602,13 +614,71 @@ function updateClock() {
   document.getElementById('clock').textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
+// ── Map rendering (coverage + prescription overlay) ───────────────────────────
+
+function renderMap(canvas) {
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+
+  // Draw base coverage map (clears canvas internally)
+  drawCoverageMap(canvas, { mapPoints, gpsState, sections, settings });
+
+  // Overlay prescription zones beneath the swath layer
+  if (prescriptionZones.length > 0) {
+    const hasGPS    = gpsState.connected || gpsState.simulated;
+    const currentPos = hasGPS ? { lat: gpsState.lat, lon: gpsState.lon } : null;
+    const t = buildMapTransform(W, H, mapPoints, currentPos,
+      settings.section_width_ft * sections.length);
+    if (t) drawPrescriptionZones(ctx, prescriptionZones, t);
+  }
+}
+
+// ── Prescription map loading ──────────────────────────────────────────────────
+
+async function loadPrescription() {
+  const result = await window.spreaderAPI.loadPrescription();
+  if (!result || !result.ok) return;
+  const zones = parsePrescription(result.data);
+  if (zones.length === 0) {
+    alert('No valid rate zones found. Make sure features have a "rate_lbs_acre" property.');
+    return;
+  }
+  prescriptionZones    = zones;
+  prescriptionFilename = result.filename;
+  prescriptionActive   = true;
+  updatePrescriptionDisplay();
+  renderMap(document.getElementById('coverage-canvas'));
+}
+
+function clearPrescription() {
+  prescriptionZones    = [];
+  prescriptionFilename = null;
+  prescriptionActive   = false;
+  updatePrescriptionDisplay();
+}
+
+function updatePrescriptionDisplay() {
+  const el      = document.getElementById('prescription-status');
+  const clearBtn = document.getElementById('btn-clear-rx');
+  if (!el) return;
+  if (prescriptionActive && prescriptionFilename) {
+    el.textContent          = `Rx: ${prescriptionFilename} (${prescriptionZones.length} zones)`;
+    el.style.color          = 'var(--green)';
+    if (clearBtn) clearBtn.style.display = '';
+  } else {
+    el.textContent          = 'No prescription loaded';
+    el.style.color          = 'var(--text-label)';
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
+}
+
 function resizeCanvas() {
   const canvas = document.getElementById('coverage-canvas');
   const panel  = document.getElementById('panel-map');
   const header = panel.querySelector('.panel-header');
   canvas.width  = panel.clientWidth  - 2;
   canvas.height = panel.clientHeight - header.offsetHeight - 2;
-  drawCoverageMap(canvas, { mapPoints, gpsState, sections, settings });
+  renderMap(canvas);
   requestAnimationFrame(resizeCanvas);
 }
 
@@ -633,4 +703,5 @@ Object.assign(window, {
   openHistory, closeHistory, exportAllJobs,
   toggleJob, saveAndCloseJob,
   setFloorSpeed: pct => window.spreaderAPI.setFloorSpeed(pct),
+  loadPrescription, clearPrescription,
 });

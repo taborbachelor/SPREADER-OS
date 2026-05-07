@@ -104,6 +104,12 @@
 
       <button class="btn btn-job" id="btn-job" onclick="toggleJob()">START JOB</button>
       <button class="btn btn-history" onclick="openHistory()">☰ History</button>
+
+      <div class="divider"></div>
+
+      <button class="btn btn-prescription" onclick="loadPrescription()">↑ Load Prescription</button>
+      <button class="btn btn-prescription-clear" id="btn-clear-rx" onclick="clearPrescription()" style="display:none">✕ Clear Rx</button>
+      <div id="prescription-status" style="padding:0 14px 8px;font-size:11px;color:var(--text-label)">No prescription loaded</div>
     </div>
   </div>
 

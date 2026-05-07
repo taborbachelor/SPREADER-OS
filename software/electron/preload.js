@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('spreaderAPI', {
   setSections:       (sections)           => ipcRenderer.invoke('output:setSections', { sections }),
   setFloorSpeed:     (speedPct)           => ipcRenderer.invoke('output:setFloorSpeed', { speedPct }),
 
+  // Prescription map
+  loadPrescription: () => ipcRenderer.invoke('prescription:load'),
+
   // App info
   getVersion: () => ipcRenderer.invoke('app:version'),
 });

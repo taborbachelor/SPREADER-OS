@@ -1,7 +1,8 @@
 'use strict';
 
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
-const path  = require('path');
+const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const path = require('path');
+const fs   = require('fs');
 const { SerialPort } = require('serialport');
 
 // ── Window ────────────────────────────────────────────────────────────────────
@@ -180,6 +181,25 @@ ipcMain.handle('output:setFloorSpeed', async (_e, { speedPct }) => {
     // 0xFF = floor speed command marker, followed by speed byte
     outputPort.write(Buffer.from([0xFF, clamped]), err => resolve({ ok: !err, speedPct: clamped }));
   });
+});
+
+// ── IPC — Prescription map file load ─────────────────────────────────────────
+
+ipcMain.handle('prescription:load', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(mainWindow, {
+    title:       'Load Prescription Map',
+    buttonLabel: 'Load',
+    filters:     [{ name: 'GeoJSON', extensions: ['geojson', 'json'] }],
+    properties:  ['openFile'],
+  });
+  if (canceled || filePaths.length === 0) return null;
+  try {
+    const raw  = fs.readFileSync(filePaths[0], 'utf8');
+    const data = JSON.parse(raw);
+    return { ok: true, data, filename: path.basename(filePaths[0]) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 });
 
 // ── IPC — App info ────────────────────────────────────────────────────────────
