@@ -31,6 +31,11 @@ contextBridge.exposeInMainWorld('spreaderAPI', {
   // Prescription map
   loadPrescription: () => ipcRenderer.invoke('prescription:load'),
 
+  // Auto-updater
+  onUpdateAvailable: cb => ipcRenderer.on('updater:available', () => cb()),
+  onUpdateReady:     cb => ipcRenderer.on('updater:ready',     () => cb()),
+  installUpdate:     ()  => ipcRenderer.invoke('updater:install'),
+
   // App info
   getVersion: () => ipcRenderer.invoke('app:version'),
 });

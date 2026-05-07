@@ -10,6 +10,8 @@ import { runASCCheck, markSwathCoverage }       from '../../shared/asc-engine.js
 import { drawCoverageMap, buildMapTransform }   from '../../shared/coverage-map.js';
 import { parsePrescription, getTargetRate, drawPrescriptionZones }
                                                 from '../../shared/prescription-map.js';
+import { buildSyncPayload, buildSyncRequest, needsSync, markSynced, markSyncPending }
+                                                from '../../shared/job-sync.js';
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -65,6 +67,8 @@ let settings = {
   asc_enabled:               true,
   asc_overlap_threshold:     0.5,
   min_operating_speed_mph:   DEFAULT_MIN_SPEED_MPH,
+  sync_endpoint:             '',   // POST URL — empty disables sync
+  sync_api_key:              '',   // Bearer token — optional
 };
 
 let sections = Array.from({ length: DEFAULT_SECTION_COUNT }, (_, i) => ({
@@ -434,16 +438,81 @@ function saveAndCloseJob() {
     total_acres:       parseFloat(acres.toFixed(2)),
     avg_rate_lbs_acre: acres > 0 ? Math.round(lbs / acres) : 0,
     gps_track:         jobState.gps_track,
+    synced:            false,
+    sync_pending:      false,
   };
   const jobs = loadJobs();
   jobs.unshift(job);
-  try { localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(jobs)); } catch { /* storage full */ }
+  saveJobs(jobs);
   document.getElementById('job-summary-overlay').style.display = 'none';
   updateJobDisplay();
+  // Fire-and-forget sync — updates job record in localStorage on result
+  attemptSync(job);
 }
 
 function loadJobs() {
   try { return JSON.parse(localStorage.getItem(JOBS_STORAGE_KEY) || '[]'); } catch { return []; }
+}
+
+function saveJobs(jobs) {
+  try { localStorage.setItem(JOBS_STORAGE_KEY, JSON.stringify(jobs)); } catch { /* storage full */ }
+}
+
+function updateJobInStorage(updatedJob) {
+  const jobs = loadJobs().map(j => j.id === updatedJob.id ? updatedJob : j);
+  saveJobs(jobs);
+}
+
+// ── Cloud sync ────────────────────────────────────────────────────────────────
+
+let _lastSyncStatus = 'idle';  // 'idle' | 'ok' | 'pending' | 'disabled'
+
+async function attemptSync(job) {
+  if (!settings.sync_endpoint) {
+    _lastSyncStatus = 'disabled';
+    updateSyncIndicator();
+    return;
+  }
+  try {
+    const payload = buildSyncPayload(job);
+    const init    = buildSyncRequest(payload, settings.sync_api_key);
+    const res     = await fetch(settings.sync_endpoint, init);
+    if (res.ok) {
+      updateJobInStorage(markSynced(job));
+      _lastSyncStatus = 'ok';
+      console.debug('[SYNC] job', job.id, 'synced OK');
+    } else {
+      updateJobInStorage(markSyncPending(job, `HTTP ${res.status}`));
+      _lastSyncStatus = 'pending';
+      console.debug('[SYNC] job', job.id, 'failed HTTP', res.status);
+    }
+  } catch (err) {
+    updateJobInStorage(markSyncPending(job, err.message));
+    _lastSyncStatus = 'pending';
+    console.debug('[SYNC] job', job.id, 'network error:', err.message);
+  }
+  updateSyncIndicator();
+}
+
+async function retryPendingSyncs() {
+  if (!settings.sync_endpoint) return;
+  const pending = loadJobs().filter(needsSync).filter(j => j.sync_pending);
+  if (pending.length === 0) return;
+  console.debug('[SYNC] retrying', pending.length, 'pending jobs');
+  for (const job of pending) await attemptSync(job);
+}
+
+function updateSyncIndicator() {
+  const dot  = document.getElementById('sync-dot');
+  const text = document.getElementById('sync-status-text');
+  if (!dot || !text) return;
+  const labels = { idle: ['', 'Sync · Idle'], ok: ['ok', 'Sync · OK'], pending: ['live', 'Sync · Pending'], disabled: ['', 'Sync · Off'] };
+  const [cls, label] = labels[_lastSyncStatus] ?? labels.idle;
+  dot.className    = `status-dot${cls ? ' ' + cls : ''}`;
+  text.textContent = label;
+  text.style.color = _lastSyncStatus === 'ok' ? 'var(--green)'
+                   : _lastSyncStatus === 'pending' ? 'var(--amber)'
+                   : 'var(--text-secondary)';
 }
 
 function exportAllJobs() {
@@ -464,6 +533,8 @@ function openSettings() {
   document.getElementById('set-section-width').value  = settings.section_width_ft;
   document.getElementById('set-asc-threshold').value  = Math.round(settings.asc_overlap_threshold * 100);
   document.getElementById('set-min-speed').value      = settings.min_operating_speed_mph;
+  document.getElementById('set-sync-endpoint').value  = settings.sync_endpoint;
+  document.getElementById('set-sync-key').value       = settings.sync_api_key;
   document.getElementById('settings-panel').style.display = '';
 }
 
@@ -476,6 +547,9 @@ function applySettings() {
   settings.section_width_ft          = parseFloat(document.getElementById('set-section-width').value) || 5;
   settings.asc_overlap_threshold     = (parseFloat(document.getElementById('set-asc-threshold').value) || 50) / 100;
   settings.min_operating_speed_mph   = parseFloat(document.getElementById('set-min-speed').value)     || 0.3;
+  settings.sync_endpoint             = document.getElementById('set-sync-endpoint').value.trim();
+  settings.sync_api_key              = document.getElementById('set-sync-key').value.trim();
+  updateSyncIndicator();
   sections = Array.from({ length: settings.section_count }, (_, i) => ({
     index: i, active: true, manual_override: false, asc_covered: false,
   }));
@@ -688,13 +762,30 @@ window.spreaderAPI.getVersion().then(v => {
   document.getElementById('app-version').textContent = `v${v}`;
 });
 
+window.spreaderAPI.onUpdateAvailable(() => {
+  console.debug('[UPDATER] update available — downloading');
+});
+
+window.spreaderAPI.onUpdateReady(() => {
+  const el = document.getElementById('app-version');
+  if (el) {
+    el.textContent += ' · Update ready';
+    el.style.color  = 'var(--amber)';
+    el.title        = 'Click to restart and install';
+    el.style.cursor = 'pointer';
+    el.onclick      = () => window.spreaderAPI.installUpdate();
+  }
+});
+
 renderSections();
 updateClock();
+updateSyncIndicator();
 setInterval(updateClock, 1000);
 setInterval(updateJobTimer, 1000);
 requestAnimationFrame(resizeCanvas);
 startSimulation();
 connectScaleWs();
+retryPendingSyncs();
 
 // Expose functions referenced by inline HTML onclick attributes
 Object.assign(window, {
