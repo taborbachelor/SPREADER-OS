@@ -12,6 +12,7 @@
     "build:dir": "electron-builder --win --x64 --dir"
   },
   "dependencies": {
+    "electron-updater": "^6.3.0",
     "serialport": "^12.0.0",
     "ws": "^8.18.0"
   },
@@ -22,22 +23,39 @@
   "build": {
     "appId": "com.spreader.os",
     "productName": "Spreader OS",
+    "copyright": "Copyright © 2025 Tabor",
     "directories": {
-      "output": "dist"
+      "output": "dist",
+      "buildResources": "assets/build"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "taborbachelor",
+      "repo": "spreader-project"
     },
     "win": {
-      "target": "nsis",
-      "icon": "assets/icon.ico"
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/build/icon.ico",
+      "artifactName": "SpreaderOS-Setup-${version}.exe",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
-      "oneClick": true,
-      "perMachine": false
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Spreader OS",
+      "installerIcon": "assets/build/icon.ico",
+      "uninstallerIcon": "assets/build/icon.ico"
     },
     "files": [
       "main.js",
       "preload.js",
       "renderer/**/*",
-      "../shared/**/*"
-    ]
+      "../shared/**/*",
+      "!**/*.map"
+    ],
+    "extraResources": [],
+    "asar": true
   }
 }

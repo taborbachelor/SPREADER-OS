@@ -3,7 +3,8 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
 const fs   = require('fs');
-const { SerialPort } = require('serialport');
+const { SerialPort }  = require('serialport');
+const { autoUpdater } = require('electron-updater');
 
 // ── Window ────────────────────────────────────────────────────────────────────
 
@@ -34,6 +35,17 @@ function createWindow() {
 app.whenReady().then(() => {
   createWindow();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
+
+  // Check for updates silently — notify renderer if one is available.
+  if (!process.env.SPREADER_DEV) {
+    autoUpdater.checkForUpdatesAndNotify();
+    autoUpdater.on('update-available', () => {
+      mainWindow?.webContents.send('updater:available');
+    });
+    autoUpdater.on('update-downloaded', () => {
+      mainWindow?.webContents.send('updater:ready');
+    });
+  }
 });
 
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
@@ -200,6 +212,12 @@ ipcMain.handle('prescription:load', async () => {
   } catch (err) {
     return { ok: false, error: err.message };
   }
+});
+
+// ── IPC — Auto-updater ────────────────────────────────────────────────────────
+
+ipcMain.handle('updater:install', () => {
+  autoUpdater.quitAndInstall();
 });
 
 // ── IPC — App info ────────────────────────────────────────────────────────────
