@@ -77,7 +77,22 @@ let settings = {
   rc_floor_max_pct:          90,   // floor belt won't exceed this %
   sync_endpoint:             '',   // POST URL — empty disables sync
   sync_api_key:              '',   // Bearer token — optional
+  rc_enabled:                true,
 };
+
+const SETTINGS_STORAGE_KEY = 'spreader_settings_v1';
+
+function saveSettings() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings)); } catch { }
+}
+
+function loadSettings() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
+    if (saved) Object.assign(settings, saved);
+  } catch { }
+  _rcEnabled = settings.rc_enabled ?? true;
+}
 
 let sections = Array.from({ length: DEFAULT_SECTION_COUNT }, (_, i) => ({
   index: i, active: true, manual_override: false, asc_covered: false,
@@ -195,6 +210,12 @@ function runRateController() {
 
   window.spreaderAPI.setFloorSpeed(_floorSpeedPct).catch(() => {});
   updateFloorSpeedDisplay();
+}
+
+function setRateControl(enabled) {
+  _rcEnabled = enabled;
+  settings.rc_enabled = enabled;
+  saveSettings();
 }
 
 // ── Rate / ASC recalculate ────────────────────────────────────────────────────
@@ -338,12 +359,18 @@ window.spreaderAPI.onScaleDisconnect(() => {
   updateStatusBar();
 });
 
+window.spreaderAPI.onOutputDisconnect(() => {
+  _outputConnected = false;
+  updateStatusBar();
+});
+
 // ── Port picker ───────────────────────────────────────────────────────────────
 
 async function openPortPicker(target) {
   _portPickerTarget = target;
   _selectedPortPath = null;
-  document.getElementById('port-picker-title').textContent = target === 'gps' ? 'Connect GPS' : 'Connect Scale';
+  const _titles = { gps: 'Connect GPS', scale: 'Connect Scale', output: 'Connect Output' };
+  document.getElementById('port-picker-title').textContent = _titles[target] ?? 'Select Port';
   document.getElementById('port-baud').value = target === 'gps' ? GPS_BAUD_RATE : SCALE_BAUD_RATE;
 
   const ports = await window.spreaderAPI.listPorts();
@@ -599,6 +626,7 @@ function applySettings() {
     index: i, active: true, manual_override: false, asc_covered: false,
   }));
   renderSections();
+  saveSettings();
   closeSettings();
 }
 
@@ -707,7 +735,9 @@ function updateMetricsDisplay() {
     : `—<span class="metric-unit">mph</span>`;
 
   const tonsLeft = scaleState.weight_lbs / 2000;
-  document.getElementById('display-tons-left').textContent = isScale ? tonsLeft.toFixed(1) : '—';
+  document.getElementById('display-tons-left').innerHTML = isScale
+    ? `${tonsLeft.toFixed(1)}<span class="metric-unit">tons</span>`
+    : `—<span class="metric-unit">tons</span>`;
   document.getElementById('display-target-rate').innerHTML = `${settings.target_rate_lbs_per_acre}<span class="metric-unit">lbs/ac</span>`;
 }
 
@@ -828,6 +858,12 @@ window.spreaderAPI.onUpdateReady(() => {
   }
 });
 
+loadSettings();
+sections = Array.from({ length: settings.section_count }, (_, i) => ({
+  index: i, active: true, manual_override: false, asc_covered: false,
+}));
+const _rcToggleEl = document.getElementById('rc-toggle');
+if (_rcToggleEl) _rcToggleEl.checked = _rcEnabled;
 renderSections();
 updateClock();
 updateSyncIndicator();
@@ -844,7 +880,7 @@ Object.assign(window, {
   openSettings, closeSettings, applySettings,
   openHistory, closeHistory, exportAllJobs,
   toggleJob, saveAndCloseJob,
-  setFloorSpeed:    pct     => window.spreaderAPI.setFloorSpeed(pct),
-  setRateControl:   enabled => { _rcEnabled = enabled; },
+  setFloorSpeed:    pct => window.spreaderAPI.setFloorSpeed(pct),
+  setRateControl,
   loadPrescription, clearPrescription,
 });

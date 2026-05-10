@@ -154,6 +154,7 @@ ipcMain.handle('output:connect', async (_e, { portPath, baudRate = 9600 }) => {
   return new Promise((resolve, reject) => {
     outputPort = new SerialPort({ path: portPath, baudRate }, err => {
       if (err) return reject(err.message);
+      outputPort.on('close', () => mainWindow?.webContents.send('output:disconnect'));
       outputPort.on('error', e => console.error('[OUTPUT]', e.message));
       resolve({ ok: true });
     });
